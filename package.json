@@ -1,0 +1,15 @@
+{
+  "name": "stellasync-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "seed": "ts-node scripts/seedTestData.ts"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}

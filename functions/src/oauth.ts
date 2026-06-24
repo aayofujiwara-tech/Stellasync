@@ -39,7 +39,7 @@ function buildCodeChallenge(verifier: string): string {
  *   created_at    : Timestamp – serverTimestamp
  */
 export const authXRedirect = onRequest(
-  { cors: CORS_ORIGINS, secrets: [X_CLIENT_ID, X_REDIRECT_URI] },
+  { cors: CORS_ORIGINS, secrets: [X_CLIENT_ID, X_REDIRECT_URI], region: 'asia-northeast2' },
   async (req, res) => {
     if (req.method !== 'GET') {
       res.status(405).json({ error: 'Method not allowed' })
@@ -98,6 +98,7 @@ export const authXCallback = onRequest(
   {
     cors: CORS_ORIGINS,
     secrets: [X_CLIENT_ID, X_CLIENT_SECRET, X_REDIRECT_URI, ENCRYPTION_KEY],
+    region: 'asia-northeast2',
   },
   async (req, res) => {
     if (req.method !== 'POST') {

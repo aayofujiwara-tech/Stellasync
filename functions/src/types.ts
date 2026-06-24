@@ -47,6 +47,27 @@ export interface TokenResponse {
 }
 
 /**
+ * stores/{storeId}
+ * 店舗の営業時間とポーリング設定を保持する。
+ */
+export interface StoreData {
+  name: string
+  org_id: string
+  is_active: boolean
+  business_hours: {
+    open: string       // 例: '20:00'
+    close: string      // 例: '04:00'（深夜またぎ対応）
+    timezone: string   // 例: 'Asia/Tokyo'
+  }
+  polling_config: {
+    high_freq_start_offset: number   // 開店の何分前から高頻度開始（例: -60）
+    high_freq_end_offset: number     // 閉店の何分後まで高頻度継続（例: 120）
+    high_freq_interval: number       // 高頻度間隔（分）（例: 15）
+    low_freq_interval: number        // 低頻度間隔（分）（例: 120）
+  }
+}
+
+/**
  * post_hourly_metrics/{post_id}_{hour_offset}
  * 投稿のインプレッション・いいね・RTを時間単位で蓄積するドキュメント。
  */
