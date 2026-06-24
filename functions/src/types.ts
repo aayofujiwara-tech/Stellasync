@@ -45,3 +45,28 @@ export interface TokenResponse {
   expires_in: number
   scope: string
 }
+
+/**
+ * post_hourly_metrics/{post_id}_{hour_offset}
+ * 投稿のインプレッション・いいね・RTを時間単位で蓄積するドキュメント。
+ */
+export interface PostHourlyMetrics {
+  post_id: string
+  cast_id: string
+  store_id: string
+  org_id: string
+  posted_at: Timestamp
+  posted_hour: number           // 0〜23
+  posted_dow: number            // 0〜6（0 = 日曜）
+  hour_offset: number           // 投稿からの経過時間（整数時間）
+  imp_delta: number
+  like_delta: number
+  rt_delta: number
+  imp_cumulative: number
+  like_cumulative: number
+  rt_cumulative: number
+  fetch_phase: 'high' | 'low' | 'daily'
+  has_media: boolean
+  hashtags: string[]
+  fetched_at: Timestamp
+}
