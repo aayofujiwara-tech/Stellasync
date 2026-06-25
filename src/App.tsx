@@ -11,6 +11,15 @@ import SettingsPage from './pages/cast/SettingsPage'
 function RootRedirect() {
   const { user, loading } = useAuth()
 
+  // Cloudflare / DNS レイヤーで /auth/x/callback のパスが / に変わることがあるため、
+  // root に code+state が付いていれば AuthCallback に引き継ぐ
+  const params = new URLSearchParams(window.location.search)
+  const code  = params.get('code')
+  const state = params.get('state')
+  if (code && state) {
+    return <AuthCallback />
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: '#0F0F14' }}>
