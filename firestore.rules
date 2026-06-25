@@ -3,79 +3,33 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Cloud Functions（Admin SDK）はこのルールをバイパスするため書き込みは全て禁止
-    // クライアントからの読み取りのみ以下で制御する
-
-    // OAuth セッション：クライアントアクセス禁止
-    match /oauth_sessions/{docId} {
-      allow read, write: if false;
-    }
-
-    // アカウント：自分のドキュメントのみ読取可（マネージャーは同org内も可）
-    // access_token / refresh_token は暗号化済みだが、ルールで書き込みも禁止
     match /accounts/{userId} {
-      allow read: if request.auth != null && (
-        request.auth.uid == userId ||
-        (resource.data.org_id != null && isManagerInOrg(resource.data.org_id))
-      );
+      allow read: if request.auth != null
+        && request.auth.uid == userId;
       allow write: if false;
     }
 
-    // 日次メトリクス：自分のデータのみ、またはマネージャー
     match /daily_metrics/{docId} {
-      allow read: if request.auth != null && (
-        resource.data.cast_id == request.auth.uid ||
-        (resource.data.org_id != null && isManagerInOrg(resource.data.org_id))
-      );
+      allow read: if request.auth != null
+        && resource.data.cast_id == request.auth.uid;
       allow write: if false;
     }
 
-    // 投稿時間別メトリクス：同上
     match /post_hourly_metrics/{docId} {
-      allow read: if request.auth != null && (
-        resource.data.cast_id == request.auth.uid ||
-        (resource.data.org_id != null && isManagerInOrg(resource.data.org_id))
-      );
+      allow read: if request.auth != null
+        && resource.data.cast_id == request.auth.uid;
       allow write: if false;
     }
 
-    // 店舗情報：同じ org のメンバーのみ読取可
+    match /notifications/{docId} {
+      allow read: if request.auth != null
+        && resource.data.recipient_id == request.auth.uid;
+      allow write: if false;
+    }
+
     match /stores/{storeId} {
-      allow read: if request.auth != null &&
-        resource.data.org_id != null &&
-        isMemberInOrg(resource.data.org_id);
+      allow read: if request.auth != null;
       allow write: if false;
-    }
-
-    // 組織メンバー：同じ org のメンバーのみ読取可
-    match /organizations/{orgId}/members/{memberId} {
-      allow read: if request.auth != null && isMemberInOrg(orgId);
-      allow write: if false;
-    }
-
-    // 通知：自分宛のみ読取可
-    match /notifications/{notifId} {
-      allow read: if request.auth != null &&
-        resource.data.recipient_id == request.auth.uid;
-      allow write: if false;
-    }
-
-    // エクスポート：同じ org のマネージャーのみ
-    match /exports/{exportId} {
-      allow read: if request.auth != null &&
-        resource.data.org_id != null &&
-        isManagerInOrg(resource.data.org_id);
-      allow write: if false;
-    }
-
-    // ヘルパー関数
-    function isMemberInOrg(orgId) {
-      return exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
-    }
-
-    function isManagerInOrg(orgId) {
-      let member = get(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
-      return member.data.role in ['manager', 'area_manager'];
     }
   }
 }

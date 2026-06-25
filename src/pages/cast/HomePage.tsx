@@ -1,0 +1,179 @@
+import { useEffect, useState } from 'react'
+import { useAuth } from '../../hooks/useAuth'
+import { db } from '../../lib/firebase'
+import {
+  doc, getDoc,
+  collection, query, where, orderBy, limit, getDocs,
+  type Timestamp,
+} from 'firebase/firestore'
+import { TrendingUp, TrendingDown } from 'lucide-react'
+
+interface AccountData {
+  display_name: string
+  best_times: Array<{ hour: number; avg_imp: number; sample_count: number }>
+}
+
+interface DailyMetric {
+  date: Timestamp
+  impressions: number
+  followers: number
+  posts_count: number
+}
+
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl p-4 animate-pulse" style={{ backgroundColor: '#1A1A24' }}>
+      <div className="h-3 w-20 rounded mb-3" style={{ backgroundColor: '#2A2A34' }} />
+      <div className="h-8 w-28 rounded mb-2" style={{ backgroundColor: '#2A2A34' }} />
+      <div className="h-3 w-16 rounded" style={{ backgroundColor: '#2A2A34' }} />
+    </div>
+  )
+}
+
+export default function HomePage() {
+  const { user } = useAuth()
+  const [account, setAccount] = useState<AccountData | null>(null)
+  const [metrics, setMetrics] = useState<DailyMetric[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user) return
+
+    const load = async () => {
+      try {
+        const [accountSnap, metricsSnap] = await Promise.all([
+          getDoc(doc(db, 'accounts', user.uid)),
+          getDocs(
+            query(
+              collection(db, 'daily_metrics'),
+              where('cast_id', '==', user.uid),
+              orderBy('date', 'desc'),
+              limit(14),
+            ),
+          ),
+        ])
+
+        if (accountSnap.exists()) {
+          setAccount(accountSnap.data() as AccountData)
+        }
+        setMetrics(metricsSnap.docs.map((d) => d.data() as DailyMetric))
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+  }, [user])
+
+  const thisWeek = metrics.slice(0, 7)
+  const lastWeek  = metrics.slice(7, 14)
+
+  const sumImp = (data: DailyMetric[]) =>
+    data.reduce((s, m) => s + (m.impressions ?? 0), 0)
+
+  const totalImps      = sumImp(thisWeek)
+  const prevImps       = sumImp(lastWeek)
+  const impChange      = prevImps > 0
+    ? Math.round(((totalImps - prevImps) / prevImps) * 100)
+    : null
+
+  const latestFollowers  = thisWeek[0]?.followers ?? 0
+  const oldestFollowers  = thisWeek[thisWeek.length - 1]?.followers ?? latestFollowers
+  const weekFollowerGain = latestFollowers - oldestFollowers
+  const totalPosts       = thisWeek.reduce((s, m) => s + (m.posts_count ?? 0), 0)
+  const bestHour         = account?.best_times?.[0]?.hour
+
+  if (loading) {
+    return (
+      <div className="px-4 py-6 space-y-4">
+        <div className="h-6 w-40 rounded animate-pulse" style={{ backgroundColor: '#1A1A24' }} />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    )
+  }
+
+  const hasData = metrics.length > 0
+
+  return (
+    <div className="px-4 py-6 space-y-4">
+      <p className="text-base font-medium" style={{ color: '#FFFFFF' }}>
+        こんにちは、{account?.display_name ?? 'ゲスト'}さん
+      </p>
+
+      <div className="h-px" style={{ backgroundColor: '#1A1A24' }} />
+
+      {!hasData ? (
+        <div className="rounded-xl p-6 text-center" style={{ backgroundColor: '#1A1A24' }}>
+          <p className="text-sm" style={{ color: '#A0A0B0' }}>
+            データを取得中です。しばらくお待ちください
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* IMP */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
+            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>今週のIMP</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold" style={{ color: '#7C6FE0' }}>
+                {totalImps.toLocaleString()}
+              </span>
+              {impChange !== null && (
+                <span
+                  className="flex items-center text-sm font-medium"
+                  style={{ color: impChange >= 0 ? '#1D9E75' : '#D85A30' }}
+                >
+                  {impChange >= 0
+                    ? <TrendingUp size={14} className="mr-0.5" />
+                    : <TrendingDown size={14} className="mr-0.5" />}
+                  {impChange >= 0 ? '+' : ''}{impChange}%
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* フォロワー */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
+            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>フォロワー</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold" style={{ color: '#7C6FE0' }}>
+                {latestFollowers.toLocaleString()}
+              </span>
+              {weekFollowerGain !== 0 && (
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: weekFollowerGain > 0 ? '#1D9E75' : '#D85A30' }}
+                >
+                  {weekFollowerGain > 0 ? '+' : ''}{weekFollowerGain}今週
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* 投稿数 */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
+            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>今週の投稿</p>
+            <span className="text-3xl font-bold" style={{ color: '#7C6FE0' }}>
+              {totalPosts}
+              <span className="text-base font-normal ml-1" style={{ color: '#A0A0B0' }}>件</span>
+            </span>
+          </div>
+
+          {/* ベストタイム */}
+          {bestHour !== undefined && (
+            <>
+              <div className="h-px" style={{ backgroundColor: '#1A1A24' }} />
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
+                <p className="text-xs mb-2" style={{ color: '#A0A0B0' }}>⏰ ベストタイム</p>
+                <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>
+                  {bestHour}時台が一番伸びる
+                </p>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

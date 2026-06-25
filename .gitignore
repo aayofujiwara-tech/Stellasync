@@ -5,3 +5,10 @@ node_modules/
 .dev.vars
 dist/
 lib/
+
+# Firebase Admin SDK credentials (絶対にコミットしない)
+*-adminsdk-*.json
+
+# TypeScript build info
+*.tsbuildinfo
+

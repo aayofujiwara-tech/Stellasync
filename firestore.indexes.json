@@ -8,6 +8,14 @@
         { "fieldPath": "posted_at", "order": "ASCENDING" },
         { "fieldPath": "hour_offset", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "daily_metrics",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cast_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
