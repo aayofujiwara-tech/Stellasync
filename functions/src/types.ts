@@ -68,6 +68,24 @@ export interface StoreData {
 }
 
 /**
+ * daily_metrics/{cast_id}_{YYYY-MM-DD}
+ * 日次フォロワー数・集計指標を保存するドキュメント。
+ */
+export interface DailyMetrics {
+  cast_id: string
+  store_id: string
+  org_id: string
+  date: Timestamp
+  impressions?: number
+  likes?: number
+  retweets?: number
+  followers: number
+  following: number
+  tweet_count: number
+  posts_count?: number
+}
+
+/**
  * post_hourly_metrics/{post_id}_{hour_offset}
  * 投稿のインプレッション・いいね・RTを時間単位で蓄積するドキュメント。
  */

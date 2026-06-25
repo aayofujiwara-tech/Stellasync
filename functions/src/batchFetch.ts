@@ -76,6 +76,10 @@ export async function fetchAndStoreMetrics(
   accountData: Account,
   phase: 'high' | 'low' | 'daily'
 ): Promise<void> {
+  if (!accountData.access_token) {
+    console.warn(`[batchFetch] skipping ${accountId}: no access_token stored`)
+    return
+  }
   const accessToken = decrypt(accountData.access_token, ENCRYPTION_KEY.value())
 
   const url =

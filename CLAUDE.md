@@ -29,9 +29,10 @@
 `cat stellasync.md` で全仕様を確認すること。
 
 ## 実装順序
-Step 1: crypto.ts + テスト ← 現在のフェーズ
-Step 2: X OAuth 2.0フロー
-Step 3: batchFetch.ts
-Step 4: pollingScheduler.ts
-Step 5: dailyBatch.ts
-Step 6: tokenWatcher.ts
+Step 1: crypto.ts + テスト ✅
+Step 2: X OAuth 2.0フロー ✅
+Step 3: batchFetch.ts ✅
+Step 4: pollingScheduler.ts ✅
+Step 5: dailyBatch.ts ✅
+Step 6: tokenWatcher.ts ✅
+Step 7: 1〜2週間データ蓄積 → Phase 2（フロントエンド）へ ← 現在のフェーズ

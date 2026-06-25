@@ -5,6 +5,7 @@
     "ignore": ["node_modules", ".git", "**/*.test.ts"]
   },
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   }
 }
