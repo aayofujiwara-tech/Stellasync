@@ -106,10 +106,14 @@ export const authXCallback = onRequest(
       return
     }
 
-    const code = req.query['code'] as string | undefined
-    const state = req.query['state'] as string | undefined
+    // フロントエンドは JSON body で送る。クエリパラメータにも対応（フォールバック）
+    const code  = (req.body?.code  ?? req.query['code'])  as string | undefined
+    const state = (req.body?.state ?? req.query['state']) as string | undefined
+
+    console.log('[authXCallback] code present:', !!code, 'state present:', !!state)
 
     if (!code || !state) {
+      console.error('[authXCallback] Missing code or state. body:', req.body, 'query:', req.query)
       res.status(400).json({ error: 'code and state are required' })
       return
     }
@@ -119,6 +123,7 @@ export const authXCallback = onRequest(
     const sessionDoc = await sessionRef.get()
 
     if (!sessionDoc.exists) {
+      console.error('[authXCallback] Session not found for state:', state)
       res.status(400).json({ error: 'Invalid or expired session' })
       return
     }
@@ -154,6 +159,7 @@ export const authXCallback = onRequest(
 
     if (!tokenRes.ok) {
       const detail = await tokenRes.text()
+      console.error('[authXCallback] Token exchange failed:', tokenRes.status, detail)
       res.status(502).json({ error: 'Failed to obtain tokens from X', detail })
       return
     }
