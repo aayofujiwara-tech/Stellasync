@@ -4,7 +4,7 @@ node_modules/
 *.local
 .dev.vars
 dist/
-lib/
+functions/lib/
 
 # Firebase Admin SDK credentials (絶対にコミットしない)
 *-adminsdk-*.json
