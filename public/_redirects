@@ -1,1 +1,3 @@
-/*  /index.html  200
+/auth/x/callback  /index.html  200
+/cast/*           /index.html  200
+/login            /index.html  200
