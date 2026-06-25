@@ -15,7 +15,11 @@ const X_CLIENT_SECRET = defineSecret('X_CLIENT_SECRET')
 const X_REDIRECT_URI = defineSecret('X_REDIRECT_URI')
 const ENCRYPTION_KEY = defineSecret('ENCRYPTION_KEY')
 
-const CORS_ORIGINS = ['https://stellasync.uminobozu.com', 'http://localhost:5173']
+const CORS_ORIGINS = [
+  'https://stellasync.uminobozu.com',
+  'http://localhost:5173',
+  /^https:\/\/.*\.stellasync\.pages\.dev$/,  // Cloudflare Pages プレビュー URL
+]
 const X_AUTH_URL = 'https://twitter.com/i/oauth2/authorize'
 const X_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token'
 const X_USER_ME_URL = 'https://api.twitter.com/2/users/me'

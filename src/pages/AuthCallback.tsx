@@ -1,36 +1,62 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+const CALLBACK_ENDPOINT = 'https://authxcallback-6rca6icyda-dt.a.run.app'
+
 export default function AuthCallback() {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const code  = params.get('code')
-    const state = params.get('state')
+    const run = async () => {
+      console.log('[AuthCallback] 開始 URL:', window.location.href)
 
-    if (!code || !state) {
-      setError('認証パラメータが不正です。')
-      return
+      const params = new URLSearchParams(window.location.search)
+      const code  = params.get('code')
+      const state = params.get('state')
+
+      console.log('[AuthCallback] code:', code ? `${code.slice(0, 10)}...` : 'なし')
+      console.log('[AuthCallback] state:', state ? `${state.slice(0, 10)}...` : 'なし')
+
+      if (!code || !state) {
+        console.error('[AuthCallback] code/state が取得できなかった。クエリパラメータ全体:', window.location.search)
+        setError('認証パラメータが不正です。')
+        return
+      }
+
+      console.log('[AuthCallback] エンドポイントにリクエスト送信:', CALLBACK_ENDPOINT)
+
+      let res: Response
+      try {
+        res = await fetch(CALLBACK_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, state }),
+        })
+      } catch (fetchErr) {
+        console.error('[AuthCallback] fetch 自体が失敗（CORS or ネットワーク）:', fetchErr)
+        setError('サーバーへの接続に失敗しました（CORS またはネットワークエラー）')
+        setErrorDetail(String(fetchErr))
+        return
+      }
+
+      console.log('[AuthCallback] レスポンス status:', res.status)
+
+      if (!res.ok) {
+        const body = await res.text()
+        console.error('[AuthCallback] エラーレスポンス:', res.status, body)
+        setError(`認証に失敗しました（HTTP ${res.status}）`)
+        setErrorDetail(body)
+        return
+      }
+
+      const data: unknown = await res.json()
+      console.log('[AuthCallback] 成功:', data)
+      navigate('/cast/home', { replace: true })
     }
 
-    fetch('https://authxcallback-6rca6icyda-dt.a.run.app', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, state }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('認証に失敗しました')
-        navigate('/cast/home', { replace: true })
-      })
-      .catch((err: unknown) => {
-        setError(
-          err instanceof Error
-            ? err.message
-            : '認証に失敗しました。もう一度お試しください。',
-        )
-      })
+    run()
   }, [navigate])
 
   if (error) {
@@ -39,8 +65,14 @@ export default function AuthCallback() {
         className="min-h-screen flex items-center justify-center px-4"
         style={{ backgroundColor: '#0F0F14' }}
       >
-        <div className="w-full max-w-[375px] flex flex-col items-center gap-6 text-center">
-          <p className="text-sm" style={{ color: '#D85A30' }}>{error}</p>
+        <div className="w-full max-w-[375px] flex flex-col items-center gap-4 text-center">
+          <p className="text-sm font-medium" style={{ color: '#D85A30' }}>{error}</p>
+          {errorDetail && (
+            <p className="text-xs px-3 py-2 rounded-lg w-full text-left break-all"
+               style={{ backgroundColor: '#1A1A24', color: '#A0A0B0' }}>
+              {errorDetail}
+            </p>
+          )}
           <button
             onClick={() => navigate('/login', { replace: true })}
             className="px-6 py-3 rounded-xl font-semibold"
