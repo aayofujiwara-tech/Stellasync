@@ -11,8 +11,14 @@ export default function LoginPage() {
     setError(null)
     try {
       const { user } = await signInAnonymously(auth)
-      window.location.href =
-        `https://authxredirect-6rca6icyda-dt.a.run.app?uid=${user.uid}`
+      const idToken = await user.getIdToken()
+      const res = await fetch(import.meta.env.VITE_AUTH_REDIRECT_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      if (!res.ok) throw new Error('redirect request failed')
+      const { redirectUrl } = (await res.json()) as { redirectUrl: string }
+      window.location.href = redirectUrl
     } catch {
       setError('サインインに失敗しました。もう一度お試しください。')
       setLoading(false)

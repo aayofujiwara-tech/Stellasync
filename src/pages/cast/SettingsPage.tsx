@@ -32,14 +32,18 @@ export default function SettingsPage() {
   }
 
   const handleReconnect = async () => {
-    const currentUser = auth.currentUser
-    if (currentUser) {
-      window.location.href =
-        `https://authxredirect-6rca6icyda-dt.a.run.app?uid=${currentUser.uid}`
-    } else {
-      const { user: anonUser } = await signInAnonymously(auth)
-      window.location.href =
-        `https://authxredirect-6rca6icyda-dt.a.run.app?uid=${anonUser.uid}`
+    try {
+      const currentUser = auth.currentUser ?? (await signInAnonymously(auth)).user
+      const idToken = await currentUser.getIdToken()
+      const res = await fetch(import.meta.env.VITE_AUTH_REDIRECT_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      if (!res.ok) return
+      const { redirectUrl } = (await res.json()) as { redirectUrl: string }
+      window.location.href = redirectUrl
+    } catch {
+      // 再連携失敗は UI 上のエラー状態で表示しない（次回手動リトライ）
     }
   }
 

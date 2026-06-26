@@ -4,7 +4,7 @@ import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
 import { notifyTokenRevoked } from './notifications'
-import type { Account } from './types'
+import type { Account, AccountTokens } from './types'
 
 if (getApps().length === 0) {
   initializeApp()
@@ -22,18 +22,18 @@ async function checkAccountToken(
   accountId: string,
   accountData: Account
 ): Promise<void> {
-  if (!accountData.access_token) {
-    console.warn(`[tokenWatcher] skipping ${accountId}: no access_token stored`)
+  const db = getFirestore()
+  const tokenDoc = await db.collection('account_tokens').doc(accountId).get()
+  if (!tokenDoc.exists) {
+    console.warn(`[tokenWatcher] skipping ${accountId}: no tokens stored`)
     return
   }
-  const accessToken = decrypt(accountData.access_token, ENCRYPTION_KEY.value())
+  const accessToken = decrypt((tokenDoc.data() as AccountTokens).access_token, ENCRYPTION_KEY.value())
   const url = `https://api.twitter.com/2/users/${accountData.x_user_id}`
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-
-  const db = getFirestore()
 
   if (res.ok) {
     await db.collection('accounts').doc(accountId).update({
@@ -47,7 +47,16 @@ async function checkAccountToken(
     return
   }
 
-  // 401: トークン失効確定 → status 更新 → 通知送信
+  // 401: トークン失効確定 → status 更新 → 通知送信（送信済みなら重複送信を防ぐ）
+  if (accountData.notification_sent_at) {
+    await db.collection('accounts').doc(accountId).update({
+      token_status: 'revoked',
+      token_checked_at: FieldValue.serverTimestamp(),
+    })
+    console.warn(`[tokenWatcher] token revoked (already notified) for account ${accountId}`)
+    return
+  }
+
   await db.collection('accounts').doc(accountId).update({
     token_status: 'revoked',
     token_checked_at: FieldValue.serverTimestamp(),

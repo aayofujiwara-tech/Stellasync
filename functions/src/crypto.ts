@@ -32,7 +32,8 @@ export function decrypt(encoded: string, keyHex: string): string {
   decipher.setAuthTag(authTag)
   try {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
-  } catch {
+  } catch (err) {
+    console.error('[crypto] Decryption failed:', err instanceof Error ? err.message : err)
     throw new Error('Decryption failed: invalid key or corrupted data')
   }
 }
