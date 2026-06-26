@@ -16,15 +16,14 @@ export interface OAuthSession {
 
 /**
  * accounts/{userId}
- * AES-256-GCM 暗号化済みトークンと X アカウント情報を保持する。
+ * X アカウントのプロフィールとトークンステータスを保持する。
+ * トークン実体（access_token / refresh_token）は account_tokens/{userId} に分離。
  */
 export interface Account {
   x_user_id: string
   display_name: string
   store_id?: string
   org_id?: string
-  access_token: string                  // AES-256-GCM 暗号化済み
-  refresh_token: string                 // AES-256-GCM 暗号化済み
   token_expires_at: Timestamp
   token_status: 'valid' | 'expired' | 'revoked'
   token_checked_at: Timestamp
@@ -35,6 +34,16 @@ export interface Account {
   deactivated_by?: string | null
   best_times?: Array<{ hour: number; avg_imp: number; sample_count: number }>
   best_times_updated_at?: Timestamp
+}
+
+/**
+ * account_tokens/{userId}
+ * AES-256-GCM 暗号化済みトークン実体。Admin SDK のみがアクセスする。
+ * クライアントからは firestore.rules で一切読み取り不可。
+ */
+export interface AccountTokens {
+  access_token: string   // AES-256-GCM 暗号化済み
+  refresh_token: string  // AES-256-GCM 暗号化済み
 }
 
 /** X OAuth 2.0 トークンエンドポイントのレスポンス */
@@ -106,6 +115,7 @@ export interface PostHourlyMetrics {
   rt_cumulative: number
   fetch_phase: 'high' | 'low' | 'daily'
   has_media: boolean
+  text?: string
   hashtags: string[]
   fetched_at: Timestamp
 }

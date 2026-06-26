@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const CALLBACK_ENDPOINT = 'https://authxcallback-6rca6icyda-dt.a.run.app'
+const CALLBACK_ENDPOINT = import.meta.env.VITE_AUTH_CALLBACK_URL
 
 export default function AuthCallback() {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
-  const [errorDetail, setErrorDetail] = useState<string | null>(null)
 
   useEffect(() => {
     const run = async () => {
@@ -36,8 +35,7 @@ export default function AuthCallback() {
         })
       } catch (fetchErr) {
         console.error('[AuthCallback] fetch 自体が失敗（CORS or ネットワーク）:', fetchErr)
-        setError('サーバーへの接続に失敗しました（CORS またはネットワークエラー）')
-        setErrorDetail(String(fetchErr))
+        setError('サーバーへの接続に失敗しました。もう一度お試しください。')
         return
       }
 
@@ -46,8 +44,7 @@ export default function AuthCallback() {
       if (!res.ok) {
         const body = await res.text()
         console.error('[AuthCallback] エラーレスポンス:', res.status, body)
-        setError(`認証に失敗しました（HTTP ${res.status}）`)
-        setErrorDetail(body)
+        setError(`認証に失敗しました。もう一度お試しください。`)
         return
       }
 
@@ -67,12 +64,6 @@ export default function AuthCallback() {
       >
         <div className="w-full max-w-[375px] flex flex-col items-center gap-4 text-center">
           <p className="text-sm font-medium" style={{ color: '#D85A30' }}>{error}</p>
-          {errorDetail && (
-            <p className="text-xs px-3 py-2 rounded-lg w-full text-left break-all"
-               style={{ backgroundColor: '#1A1A24', color: '#A0A0B0' }}>
-              {errorDetail}
-            </p>
-          )}
           <button
             onClick={() => navigate('/login', { replace: true })}
             className="px-6 py-3 rounded-xl font-semibold"

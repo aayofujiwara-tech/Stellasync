@@ -2,7 +2,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
-import type { Account, PostHourlyMetrics } from './types'
+import type { Account, AccountTokens, PostHourlyMetrics } from './types'
 
 if (getApps().length === 0) {
   initializeApp()
@@ -76,11 +76,17 @@ export async function fetchAndStoreMetrics(
   accountData: Account,
   phase: 'high' | 'low' | 'daily'
 ): Promise<void> {
-  if (!accountData.access_token) {
-    console.warn(`[batchFetch] skipping ${accountId}: no access_token stored`)
+  if (!/^\d+$/.test(accountData.x_user_id)) {
+    console.error(`[batchFetch] invalid x_user_id for ${accountId}: ${accountData.x_user_id}`)
     return
   }
-  const accessToken = decrypt(accountData.access_token, ENCRYPTION_KEY.value())
+  const db = getFirestore()
+  const tokenDoc = await db.collection('account_tokens').doc(accountId).get()
+  if (!tokenDoc.exists) {
+    console.warn(`[batchFetch] skipping ${accountId}: no tokens stored`)
+    return
+  }
+  const accessToken = decrypt((tokenDoc.data() as AccountTokens).access_token, ENCRYPTION_KEY.value())
 
   const url =
     `${X_TWEETS_URL}/${accountData.x_user_id}/tweets` +
@@ -106,7 +112,6 @@ export async function fetchAndStoreMetrics(
     return
   }
 
-  const db = getFirestore()
   const now = new Date()
   const batch = db.batch()
 
@@ -166,6 +171,7 @@ export async function fetchAndStoreMetrics(
         rt_cumulative: rtCumulative,
         fetch_phase: phase,
         has_media: (tweet.attachments?.media_keys?.length ?? 0) > 0,
+        text: tweet.text ?? '',
         hashtags: extractHashtags(tweet.text ?? ''),
         fetched_at: FieldValue.serverTimestamp(),
       },

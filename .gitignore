@@ -12,3 +12,7 @@ functions/lib/
 # TypeScript build info
 *.tsbuildinfo
 
+# Firebase debug logs
+firestore-debug.log
+firebase-debug.log
+

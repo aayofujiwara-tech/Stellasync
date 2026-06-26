@@ -2,9 +2,10 @@ import { onRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
+import { getAuth } from 'firebase-admin/auth'
 import { createHash, randomBytes } from 'crypto'
 import { encrypt, decrypt } from './crypto'
-import type { OAuthSession, Account, TokenResponse } from './types'
+import type { OAuthSession, AccountTokens, TokenResponse } from './types'
 
 if (getApps().length === 0) {
   initializeApp()
@@ -18,7 +19,7 @@ const ENCRYPTION_KEY = defineSecret('ENCRYPTION_KEY')
 const CORS_ORIGINS = [
   'https://stellasync.uminobozu.com',
   'http://localhost:5173',
-  /^https:\/\/.*\.stellasync\.pages\.dev$/,  // Cloudflare Pages プレビュー URL
+  /^https:\/\/[a-z0-9-]+\.stellasync\.pages\.dev$/,  // Cloudflare Pages プレビュー URL
 ]
 const X_AUTH_URL = 'https://twitter.com/i/oauth2/authorize'
 const X_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token'
@@ -31,28 +32,39 @@ function buildCodeChallenge(verifier: string): string {
 }
 
 /**
- * GET /auth/x/redirect
+ * POST /auth/x/redirect
  *
  * X OAuth 2.0 PKCE フローを開始する。
- * クエリパラメータ ?uid=<firebase-uid> が必要。
+ * Authorization: Bearer <Firebase IDトークン> ヘッダーが必要。
+ * uid はサーバー側で verifyIdToken() して確定する（クライアント入力を使わない）。
  *
+ * レスポンス: { redirectUrl: string } — クライアントはこの URL に遷移する
  * Firestore: oauth_sessions/{state} に以下を保存（TTL: 10分）
  *   code_verifier : string    – PKCE verifier（callback で使用）
- *   uid           : string    – Firebase Auth UID
+ *   uid           : string    – 検証済み Firebase Auth UID
  *   expires_at    : Timestamp – 現在時刻 + 10分
  *   created_at    : Timestamp – serverTimestamp
  */
 export const authXRedirect = onRequest(
   { cors: CORS_ORIGINS, secrets: [X_CLIENT_ID, X_REDIRECT_URI], region: 'asia-northeast2' },
   async (req, res) => {
-    if (req.method !== 'GET') {
+    if (req.method !== 'POST') {
       res.status(405).json({ error: 'Method not allowed' })
       return
     }
 
-    const uid = req.query['uid'] as string | undefined
-    if (!uid) {
-      res.status(400).json({ error: 'uid is required' })
+    const authHeader = req.headers.authorization
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Authorization header required' })
+      return
+    }
+
+    let uid: string
+    try {
+      const decoded = await getAuth().verifyIdToken(authHeader.slice(7))
+      uid = decoded.uid
+    } catch {
+      res.status(401).json({ error: 'Invalid ID token' })
       return
     }
 
@@ -79,7 +91,7 @@ export const authXRedirect = onRequest(
       code_challenge_method: 'S256',
     })
 
-    res.redirect(`${X_AUTH_URL}?${params.toString()}`)
+    res.json({ redirectUrl: `${X_AUTH_URL}?${params.toString()}` })
   }
 )
 
@@ -117,7 +129,7 @@ export const authXCallback = onRequest(
     console.log('[authXCallback] code present:', !!code, 'state present:', !!state)
 
     if (!code || !state) {
-      console.error('[authXCallback] Missing code or state. body:', req.body, 'query:', req.query)
+      console.error('[authXCallback] Missing code or state. body keys:', Object.keys(req.body ?? {}), 'query keys:', Object.keys(req.query))
       res.status(400).json({ error: 'code and state are required' })
       return
     }
@@ -164,7 +176,7 @@ export const authXCallback = onRequest(
     if (!tokenRes.ok) {
       const detail = await tokenRes.text()
       console.error('[authXCallback] Token exchange failed:', tokenRes.status, detail)
-      res.status(502).json({ error: 'Failed to obtain tokens from X', detail })
+      res.status(502).json({ error: 'Failed to obtain tokens from X' })
       return
     }
 
@@ -189,21 +201,30 @@ export const authXCallback = onRequest(
       new Date(Date.now() + tokenData.expires_in * 1000)
     )
 
-    await db.collection('accounts').doc(session.uid).set(
+    const writeBatch = db.batch()
+    // プロフィール＋トークンメタデータのみ accounts に保存
+    writeBatch.set(
+      db.collection('accounts').doc(session.uid),
       {
-        access_token: encryptedAccessToken,
-        refresh_token: encryptedRefreshToken,
+        x_user_id: userData.data.id,
+        display_name: userData.data.name,
+        is_active: true,
         token_expires_at: tokenExpiresAt,
         token_status: 'valid',
         token_checked_at: FieldValue.serverTimestamp(),
-        x_user_id: userData.data.id,
-        display_name: userData.data.name,
       },
       { merge: true }
     )
-
-    // セッションを削除
-    await sessionRef.delete()
+    // トークン実体は account_tokens に保存（クライアント不可視）
+    writeBatch.set(
+      db.collection('account_tokens').doc(session.uid),
+      {
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+      }
+    )
+    writeBatch.delete(sessionRef)
+    await writeBatch.commit()
 
     res.json({ success: true })
   }
@@ -219,14 +240,14 @@ export const authXCallback = onRequest(
  */
 export async function refreshXToken(uid: string, encryptionKey: string): Promise<string> {
   const db = getFirestore()
-  const accountDoc = await db.collection('accounts').doc(uid).get()
+  const tokenDoc = await db.collection('account_tokens').doc(uid).get()
 
-  if (!accountDoc.exists) {
-    throw new Error(`Account not found: ${uid}`)
+  if (!tokenDoc.exists) {
+    throw new Error(`Account tokens not found: ${uid}`)
   }
 
-  const account = accountDoc.data() as Account
-  const refreshToken = decrypt(account.refresh_token, encryptionKey)
+  const { refresh_token: storedRefreshToken } = tokenDoc.data() as AccountTokens
+  const refreshToken = decrypt(storedRefreshToken, encryptionKey)
 
   const credentials = Buffer.from(
     `${X_CLIENT_ID.value()}:${X_CLIENT_SECRET.value()}`
@@ -259,13 +280,19 @@ export async function refreshXToken(uid: string, encryptionKey: string): Promise
     new Date(Date.now() + tokenData.expires_in * 1000)
   )
 
-  await db.collection('accounts').doc(uid).update({
+  const refreshBatch = db.batch()
+  // トークン実体は account_tokens に更新
+  refreshBatch.update(db.collection('account_tokens').doc(uid), {
     access_token: encryptedAccessToken,
     refresh_token: encryptedRefreshToken,
+  })
+  // ステータスメタデータは accounts に更新
+  refreshBatch.update(db.collection('accounts').doc(uid), {
     token_expires_at: tokenExpiresAt,
     token_status: 'valid',
     token_checked_at: FieldValue.serverTimestamp(),
   })
+  await refreshBatch.commit()
 
   return tokenData.access_token
 }
