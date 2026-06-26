@@ -10,6 +10,14 @@
       ]
     },
     {
+      "collectionGroup": "post_hourly_metrics",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cast_id", "order": "ASCENDING" },
+        { "fieldPath": "posted_at", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "daily_metrics",
       "queryScope": "COLLECTION",
       "fields": [

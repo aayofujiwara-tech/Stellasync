@@ -17,6 +17,7 @@ interface HourlyMetric {
   rt_cumulative: number
   posted_at: Timestamp | null
   has_media: boolean
+  text?: string
 }
 
 type MetricKey = 'imp_cumulative' | 'like_cumulative' | 'rt_cumulative'
@@ -29,6 +30,7 @@ interface PostGroup {
   latest_like: number
   latest_rt: number
   hours: HourlyMetric[]
+  text: string
 }
 
 const metricLabels: Record<MetricKey, string> = {
@@ -56,6 +58,7 @@ function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
         latest_like: latest.like_cumulative,
         latest_rt:   latest.rt_cumulative,
         hours:       hours.sort((a, b) => a.hour_offset - b.hour_offset),
+        text:        latest.text ?? '',
       }
     })
     .sort((a, b) => {
@@ -65,7 +68,20 @@ function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
     })
 }
 
-function PostCard({ post }: { post: PostGroup }) {
+function engageRate(p: PostGroup): number {
+  if (p.latest_imp === 0) return 0
+  return (p.latest_like + p.latest_rt) / p.latest_imp
+}
+
+function PostCard({
+  post,
+  isImpKing,
+  isEngageKing,
+}: {
+  post: PostGroup
+  isImpKing: boolean
+  isEngageKing: boolean
+}) {
   const [expanded, setExpanded] = useState(false)
   const [tab, setTab] = useState<MetricKey>('imp_cumulative')
 
@@ -76,26 +92,74 @@ function PostCard({ post }: { post: PostGroup }) {
       })
     : '—'
 
+  const isKing = isImpKing || isEngageKing
+  const engagePct = post.latest_imp > 0
+    ? ((post.latest_like + post.latest_rt) / post.latest_imp * 100).toFixed(1)
+    : null
+
   return (
-    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1A1A24' }}>
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        backgroundColor: '#1A1A24',
+        border: isKing ? '1px solid #7C6FE0' : '1px solid transparent',
+      }}
+    >
       <button
         className="w-full text-left px-4 py-3"
         onClick={() => setExpanded((v) => !v)}
         style={{ minHeight: '44px' }}
       >
-        <div className="flex items-center justify-between mb-2">
+        {/* 日時 + バッジ行 */}
+        <div className="flex items-center justify-between mb-1">
           <span className="text-xs" style={{ color: '#A0A0B0' }}>{postedAt}</span>
-          {post.has_media && (
-            <span
-              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: '#2A2A3C', color: '#7C6FE0' }}
-            >
-              <Image size={11} />
-              メディア
-            </span>
-          )}
+          <div className="flex items-center gap-1 flex-wrap justify-end">
+            {isImpKing && (
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: '#2A2A3C', color: '#7C6FE0' }}
+              >
+                👑 IMP王
+              </span>
+            )}
+            {isEngageKing && (
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: '#2A2A3C', color: '#7C6FE0' }}
+              >
+                🔥 反応王
+              </span>
+            )}
+            {post.has_media && (
+              <span
+                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: '#2A2A3C', color: '#7C6FE0' }}
+              >
+                <Image size={11} />
+                メディア
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-4 text-sm">
+
+        {/* 本文（折りたたみ時のみ2行省略） */}
+        {post.text && !expanded && (
+          <p
+            className="text-sm mb-2"
+            style={{
+              color: '#FFFFFF',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {post.text}
+          </p>
+        )}
+
+        {/* メトリクス行 */}
+        <div className="flex gap-4 text-sm flex-wrap">
           <span>
             <span style={{ color: '#A0A0B0' }}>IMP </span>
             <span style={{ color: '#7C6FE0', fontWeight: 600 }}>{post.latest_imp.toLocaleString()}</span>
@@ -108,11 +172,27 @@ function PostCard({ post }: { post: PostGroup }) {
             <span style={{ color: '#A0A0B0' }}>RT </span>
             <span style={{ color: '#FFFFFF' }}>{post.latest_rt.toLocaleString()}</span>
           </span>
+          {engagePct !== null && (
+            <span>
+              <span style={{ color: '#A0A0B0' }}>反応率 </span>
+              <span style={{ color: '#FFFFFF' }}>{engagePct}%</span>
+            </span>
+          )}
         </div>
       </button>
 
       {expanded && (
         <div className="px-4 pb-4 border-t" style={{ borderColor: '#2A2A3C' }}>
+          {/* 本文全文 */}
+          {post.text && (
+            <p
+              className="text-sm mt-3 mb-3"
+              style={{ color: '#FFFFFF', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}
+            >
+              {post.text}
+            </p>
+          )}
+
           <div className="flex gap-1 mt-3 mb-2">
             {(Object.keys(metricLabels) as MetricKey[]).map((k) => (
               <button
@@ -183,6 +263,24 @@ export default function PostsPage() {
       .finally(() => setLoading(false))
   }, [user])
 
+  // IMP王: latest_imp 最大（同値は posted_at 最新優先）
+  const impKingId = posts.reduce<PostGroup | null>((best, p) => {
+    if (!best) return p
+    if (p.latest_imp > best.latest_imp) return p
+    if (p.latest_imp === best.latest_imp) {
+      return (p.posted_at?.toMillis() ?? 0) > (best.posted_at?.toMillis() ?? 0) ? p : best
+    }
+    return best
+  }, null)?.post_id ?? null
+
+  // エンゲージ王: IMP>=50 の中でエンゲージ率最大
+  const engageKingId = posts
+    .filter((p) => p.latest_imp >= 50)
+    .reduce<PostGroup | null>((best, p) => {
+      if (!best) return p
+      return engageRate(p) > engageRate(best) ? p : best
+    }, null)?.post_id ?? null
+
   if (loading) {
     return (
       <div className="px-4 py-6 space-y-3">
@@ -206,7 +304,12 @@ export default function PostsPage() {
   return (
     <div className="px-4 py-6 space-y-3">
       {posts.map((post) => (
-        <PostCard key={post.post_id} post={post} />
+        <PostCard
+          key={post.post_id}
+          post={post}
+          isImpKing={post.post_id === impKingId}
+          isEngageKing={post.post_id === engageKingId}
+        />
       ))}
     </div>
   )
