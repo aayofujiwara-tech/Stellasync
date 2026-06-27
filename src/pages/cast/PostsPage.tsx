@@ -17,6 +17,7 @@ interface HourlyMetric {
   rt_cumulative: number
   posted_at: Timestamp | null
   has_media: boolean
+  text: string
 }
 
 type MetricKey = 'imp_cumulative' | 'like_cumulative' | 'rt_cumulative'
@@ -29,6 +30,7 @@ interface PostGroup {
   latest_like: number
   latest_rt: number
   hours: HourlyMetric[]
+  text: string
 }
 
 const metricLabels: Record<MetricKey, string> = {
@@ -56,6 +58,7 @@ function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
         latest_like: latest.like_cumulative,
         latest_rt:   latest.rt_cumulative,
         hours:       hours.sort((a, b) => a.hour_offset - b.hour_offset),
+        text:        latest.text ?? '',
       }
     })
     .sort((a, b) => {
@@ -95,6 +98,14 @@ function PostCard({ post }: { post: PostGroup }) {
             </span>
           )}
         </div>
+        {post.text && (
+          <div
+            className="text-sm mb-2 whitespace-pre-wrap line-clamp-2"
+            style={{ color: '#E0E0E8' }}
+          >
+            {post.text}
+          </div>
+        )}
         <div className="flex gap-4 text-sm">
           <span>
             <span style={{ color: '#A0A0B0' }}>IMP </span>
