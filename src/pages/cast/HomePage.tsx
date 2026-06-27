@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { db } from '../../lib/firebase'
+import { db, functions } from '../../lib/firebase'
 import {
   doc, getDoc,
   collection, query, where, orderBy, limit, getDocs,
   type Timestamp,
 } from 'firebase/firestore'
+import { httpsCallable } from 'firebase/functions'
 import { TrendingUp, TrendingDown } from 'lucide-react'
+
+type ManualFetchResult =
+  | { ok: true }
+  | { ok: false; reason: 'cooldown'; retryAfterSec: number }
 
 interface AccountData {
   display_name: string
@@ -32,38 +37,72 @@ function SkeletonCard() {
 
 export default function HomePage() {
   const { user } = useAuth()
-  const [account, setAccount] = useState<AccountData | null>(null)
-  const [metrics, setMetrics] = useState<DailyMetric[]>([])
-  const [loading, setLoading] = useState(true)
+  const [account, setAccount]         = useState<AccountData | null>(null)
+  const [metrics, setMetrics]         = useState<DailyMetric[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [fetchLoading, setFetchLoading] = useState(false)
+  const [cd, setCd]                   = useState(0)
+  const [fetchError, setFetchError]   = useState<string | null>(null)
+  const [fetchOk, setFetchOk]         = useState(false)
+
+  const loadData = useCallback(async () => {
+    if (!user) return
+    try {
+      const [accountSnap, metricsSnap] = await Promise.all([
+        getDoc(doc(db, 'accounts', user.uid)),
+        getDocs(
+          query(
+            collection(db, 'daily_metrics'),
+            where('cast_id', '==', user.uid),
+            orderBy('date', 'desc'),
+            limit(14),
+          ),
+        ),
+      ])
+
+      if (accountSnap.exists()) {
+        setAccount(accountSnap.data() as AccountData)
+      }
+      setMetrics(metricsSnap.docs.map((d) => d.data() as DailyMetric))
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
 
   useEffect(() => {
-    if (!user) return
+    loadData()
+  }, [loadData])
 
-    const load = async () => {
-      try {
-        const [accountSnap, metricsSnap] = await Promise.all([
-          getDoc(doc(db, 'accounts', user.uid)),
-          getDocs(
-            query(
-              collection(db, 'daily_metrics'),
-              where('cast_id', '==', user.uid),
-              orderBy('date', 'desc'),
-              limit(14),
-            ),
-          ),
-        ])
+  // クールダウンカウントダウン
+  useEffect(() => {
+    if (cd <= 0) return
+    const timer = setTimeout(() => setCd((prev) => prev - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [cd])
 
-        if (accountSnap.exists()) {
-          setAccount(accountSnap.data() as AccountData)
-        }
-        setMetrics(metricsSnap.docs.map((d) => d.data() as DailyMetric))
-      } finally {
-        setLoading(false)
+  const onManualFetch = async () => {
+    setFetchLoading(true)
+    setFetchError(null)
+    setFetchOk(false)
+    try {
+      const callable = httpsCallable<Record<string, never>, ManualFetchResult>(
+        functions,
+        'manualFetch',
+      )
+      const res = await callable()
+      if (res.data.ok) {
+        setFetchOk(true)
+        await loadData()
+      } else if (res.data.reason === 'cooldown') {
+        setCd(res.data.retryAfterSec)
       }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '更新に失敗しました'
+      setFetchError(msg.includes('再連携') ? msg : '更新に失敗しました。もう一度お試しください')
+    } finally {
+      setFetchLoading(false)
     }
-
-    load()
-  }, [user])
+  }
 
   const thisWeek = metrics.slice(0, 7)
   const lastWeek  = metrics.slice(7, 14)
@@ -98,9 +137,38 @@ export default function HomePage() {
 
   return (
     <div className="px-4 py-6 space-y-4">
-      <p className="text-base font-medium" style={{ color: '#FFFFFF' }}>
-        こんにちは、{account?.display_name ?? 'ゲスト'}さん
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-base font-medium" style={{ color: '#FFFFFF' }}>
+          こんにちは、{account?.display_name ?? 'ゲスト'}さん
+        </p>
+        <button
+          onClick={onManualFetch}
+          disabled={fetchLoading || cd > 0}
+          className="text-xs px-3 py-1.5 rounded-lg font-medium transition-opacity disabled:opacity-40"
+          style={{ backgroundColor: '#7C6FE0', color: '#FFFFFF', minHeight: '32px' }}
+        >
+          {fetchLoading ? (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"
+                style={{ display: 'inline-block' }}
+              />
+              更新中
+            </span>
+          ) : cd > 0 ? (
+            `${cd}秒後に再試行`
+          ) : (
+            '今すぐ更新'
+          )}
+        </button>
+      </div>
+
+      {fetchOk && (
+        <p className="text-xs" style={{ color: '#1D9E75' }}>データを更新しました</p>
+      )}
+      {fetchError && (
+        <p className="text-xs" style={{ color: '#D85A30' }}>{fetchError}</p>
+      )}
 
       <div className="h-px" style={{ backgroundColor: '#1A1A24' }} />
 
