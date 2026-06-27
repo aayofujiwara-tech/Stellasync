@@ -35,7 +35,10 @@ interface XTweet {
 interface XTweetsResponse {
   data?: XTweet[]
   errors?: Array<{ message: string; type: string }>
-  includes?: { tweets?: Array<{ id: string; author_id?: string }> }
+  includes?: {
+    tweets?: Array<{ id: string; author_id?: string }>
+    media?: Array<{ media_key: string; type: string; url?: string; preview_image_url?: string }>
+  }
 }
 
 const GUEST_KEYWORDS = ['ゲスト出勤', 'ゲスト降臨', 'ゲスト出演', 'ゲスト来店']
@@ -61,6 +64,14 @@ function classifyPostType(
   if (tweet.in_reply_to_user_id && tweet.in_reply_to_user_id !== selfUserId) return 'reply'
   // 自分スレ連投・通常投稿・RT・自己引用は original
   return 'original'
+}
+
+function firstMediaThumb(tweet: XTweet, includes: XTweetsResponse['includes']): string | null {
+  const key = tweet.attachments?.media_keys?.[0]
+  if (!key) return null
+  const m = includes?.media?.find((x) => x.media_key === key)
+  if (!m) return null
+  return m.url ?? m.preview_image_url ?? null
 }
 
 /**
@@ -141,6 +152,7 @@ export async function fetchAndStoreMetrics(
     `${X_TWEETS_URL}/${accountData.x_user_id}/tweets` +
     '?tweet.fields=non_public_metrics,organic_metrics,created_at,attachments,text,referenced_tweets,in_reply_to_user_id' +
     '&expansions=attachments.media_keys,referenced_tweets.id' +
+    '&media.fields=url,preview_image_url,type' +
     '&max_results=10'
 
   let tweetRes = await fetch(url, {
@@ -232,6 +244,7 @@ export async function fetchAndStoreMetrics(
         rt_cumulative: rtCumulative,
         fetch_phase: phase,
         has_media: (tweet.attachments?.media_keys?.length ?? 0) > 0,
+        media_url: firstMediaThumb(tweet, tweetData.includes),
         post_type: classifyPostType(tweet, tweetData.includes, accountData.x_user_id, tweet.text ?? ''),
         text: tweet.text ?? '',
         hashtags: extractHashtags(tweet.text ?? ''),

@@ -19,6 +19,7 @@ interface HourlyMetric {
   rt_cumulative: number
   posted_at: Timestamp | null
   has_media: boolean
+  media_url?: string | null
   text: string
   post_type?: PostType
 }
@@ -34,6 +35,7 @@ interface PostGroup {
   latest_rt: number
   hours: HourlyMetric[]
   text: string
+  media_url: string | null
   post_type: PostType
 }
 
@@ -70,6 +72,7 @@ function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
         latest_rt:   latest.rt_cumulative,
         hours:       hours.sort((a, b) => a.hour_offset - b.hour_offset),
         text:        latest.text ?? '',
+        media_url:   latest.media_url ?? null,
         post_type:   latest.post_type ?? 'original',
       }
     })
@@ -132,6 +135,15 @@ function PostCard({ post }: { post: PostGroup }) {
           >
             {post.text}
           </div>
+        )}
+        {post.media_url && (
+          <img
+            src={post.media_url}
+            alt=""
+            loading="lazy"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, marginTop: 8 }}
+          />
         )}
         <div className="flex gap-4 text-sm">
           <span>
