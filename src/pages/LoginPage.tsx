@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import { signInAnonymously } from 'firebase/auth'
-import { auth } from '../lib/firebase'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
@@ -10,11 +8,8 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      const { user } = await signInAnonymously(auth)
-      const idToken = await user.getIdToken()
       const res = await fetch(import.meta.env.VITE_AUTH_REDIRECT_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
       })
       if (!res.ok) throw new Error('redirect request failed')
       const { redirectUrl } = (await res.json()) as { redirectUrl: string }

@@ -35,13 +35,12 @@ function buildCodeChallenge(verifier: string): string {
  * POST /auth/x/redirect
  *
  * X OAuth 2.0 PKCE フローを開始する。
- * Authorization: Bearer <Firebase IDトークン> ヘッダーが必要。
- * uid はサーバー側で verifyIdToken() して確定する（クライアント入力を使わない）。
+ * 未サインイン状態で呼び出し可能（認証不要）。
+ * uid は authXCallback で X user_id から確定するため、ここでは保存しない。
  *
  * レスポンス: { redirectUrl: string } — クライアントはこの URL に遷移する
  * Firestore: oauth_sessions/{state} に以下を保存（TTL: 10分）
  *   code_verifier : string    – PKCE verifier（callback で使用）
- *   uid           : string    – 検証済み Firebase Auth UID
  *   expires_at    : Timestamp – 現在時刻 + 10分
  *   created_at    : Timestamp – serverTimestamp
  */
@@ -53,21 +52,6 @@ export const authXRedirect = onRequest(
       return
     }
 
-    const authHeader = req.headers.authorization
-    if (!authHeader?.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Authorization header required' })
-      return
-    }
-
-    let uid: string
-    try {
-      const decoded = await getAuth().verifyIdToken(authHeader.slice(7))
-      uid = decoded.uid
-    } catch {
-      res.status(401).json({ error: 'Invalid ID token' })
-      return
-    }
-
     // PKCE: code_verifier（43〜128文字の base64url ランダム文字列）
     const codeVerifier = randomBytes(32).toString('base64url')
     const codeChallenge = buildCodeChallenge(codeVerifier)
@@ -76,7 +60,6 @@ export const authXRedirect = onRequest(
     const db = getFirestore()
     await db.collection('oauth_sessions').doc(state).set({
       code_verifier: codeVerifier,
-      uid,
       expires_at: new Date(Date.now() + SESSION_TTL_MS),
       created_at: FieldValue.serverTimestamp(),
     })
@@ -194,6 +177,9 @@ export const authXCallback = onRequest(
 
     const userData = (await userRes.json()) as { data: { id: string; name: string } }
 
+    // X user_id から Firebase Auth UID を確定（例: x_2956697281）
+    const uid = `x_${userData.data.id}`
+
     // トークンを AES-256-GCM で暗号化して Firestore に保存
     const encryptedAccessToken = encrypt(tokenData.access_token, ENCRYPTION_KEY.value())
     const encryptedRefreshToken = encrypt(tokenData.refresh_token, ENCRYPTION_KEY.value())
@@ -204,7 +190,7 @@ export const authXCallback = onRequest(
     const writeBatch = db.batch()
     // プロフィール＋トークンメタデータのみ accounts に保存
     writeBatch.set(
-      db.collection('accounts').doc(session.uid),
+      db.collection('accounts').doc(uid),
       {
         x_user_id: userData.data.id,
         display_name: userData.data.name,
@@ -217,7 +203,7 @@ export const authXCallback = onRequest(
     )
     // トークン実体は account_tokens に保存（クライアント不可視）
     writeBatch.set(
-      db.collection('account_tokens').doc(session.uid),
+      db.collection('account_tokens').doc(uid),
       {
         access_token: encryptedAccessToken,
         refresh_token: encryptedRefreshToken,
@@ -226,7 +212,10 @@ export const authXCallback = onRequest(
     writeBatch.delete(sessionRef)
     await writeBatch.commit()
 
-    res.json({ success: true })
+    // カスタムトークンを生成してクライアントに返す
+    const customToken = await getAuth().createCustomToken(uid)
+
+    res.json({ success: true, customToken })
   }
 )
 

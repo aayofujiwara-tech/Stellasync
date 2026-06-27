@@ -9,7 +9,7 @@ import type { Timestamp } from 'firebase-admin/firestore'
  */
 export interface OAuthSession {
   code_verifier: string
-  uid: string
+  uid?: string  // フェーズA以降は不使用。既存セッションとの互換のため optional
   expires_at: Timestamp
   created_at: Timestamp
 }
