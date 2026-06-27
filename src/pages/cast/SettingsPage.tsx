@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { db, auth } from '../../lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
-import { signOut, signInAnonymously } from 'firebase/auth'
+import { signOut } from 'firebase/auth'
 import { useNavigate } from 'react-router-dom'
 
 interface AccountData {
@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [account, setAccount] = useState<AccountData | null>(null)
   const [loading, setLoading] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -32,18 +33,25 @@ export default function SettingsPage() {
   }
 
   const handleReconnect = async () => {
+    setError(null)
     try {
-      const currentUser = auth.currentUser ?? (await signInAnonymously(auth)).user
-      const idToken = await currentUser.getIdToken()
       const res = await fetch(import.meta.env.VITE_AUTH_REDIRECT_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: { 'Content-Type': 'application/json' },
       })
-      if (!res.ok) return
-      const { redirectUrl } = (await res.json()) as { redirectUrl: string }
+      if (!res.ok) {
+        setError('再連携の開始に失敗しました。もう一度お試しください。')
+        return
+      }
+      const { redirectUrl, sessionSecret } = (await res.json()) as {
+        redirectUrl: string
+        sessionSecret: string
+      }
+      // LoginPage / AuthCallback と同じキーで sessionSecret を保存（CSRF対策の検証に必須）
+      localStorage.setItem('stellasync_oauth_secret', sessionSecret)
       window.location.href = redirectUrl
     } catch {
-      // 再連携失敗は UI 上のエラー状態で表示しない（次回手動リトライ）
+      setError('再連携に失敗しました。もう一度お試しください。')
     }
   }
 
@@ -100,6 +108,10 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {error && (
+        <p className="text-xs px-1" style={{ color: '#D85A30' }}>{error}</p>
+      )}
 
       {/* ログアウト */}
       <button
