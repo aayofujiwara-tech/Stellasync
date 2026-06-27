@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { signInWithCustomToken } from 'firebase/auth'
+import { auth } from '../lib/firebase'
 
 const CALLBACK_ENDPOINT = import.meta.env.VITE_AUTH_CALLBACK_URL
+const OAUTH_SECRET_KEY  = 'stellasync_oauth_secret'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
@@ -19,8 +22,18 @@ export default function AuthCallback() {
       console.log('[AuthCallback] state:', state ? `${state.slice(0, 10)}...` : 'なし')
 
       if (!code || !state) {
-        console.error('[AuthCallback] code/state が取得できなかった。クエリパラメータ全体:', window.location.search)
+        console.error('[AuthCallback] code/state が取得できなかった:', window.location.search)
         setError('認証パラメータが不正です。')
+        return
+      }
+
+      // Login CSRF 対策: localStorage から sessionSecret を取り出す（使い捨て）
+      const sessionSecret = localStorage.getItem(OAUTH_SECRET_KEY)
+      localStorage.removeItem(OAUTH_SECRET_KEY)
+
+      if (!sessionSecret) {
+        console.error('[AuthCallback] sessionSecret が localStorage にない — CSRF の可能性')
+        setError('認証セッションが無効です。もう一度サインインしてください。')
         return
       }
 
@@ -31,10 +44,10 @@ export default function AuthCallback() {
         res = await fetch(CALLBACK_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, state }),
+          body: JSON.stringify({ code, state, session_secret: sessionSecret }),
         })
       } catch (fetchErr) {
-        console.error('[AuthCallback] fetch 自体が失敗（CORS or ネットワーク）:', fetchErr)
+        console.error('[AuthCallback] fetch 失敗（CORS or ネットワーク）:', fetchErr)
         setError('サーバーへの接続に失敗しました。もう一度お試しください。')
         return
       }
@@ -44,13 +57,27 @@ export default function AuthCallback() {
       if (!res.ok) {
         const body = await res.text()
         console.error('[AuthCallback] エラーレスポンス:', res.status, body)
-        setError(`認証に失敗しました。もう一度お試しください。`)
+        setError('認証に失敗しました。もう一度お試しください。')
         return
       }
 
-      const data: unknown = await res.json()
-      console.log('[AuthCallback] 成功:', data)
-      // フルリロードで onAuthStateChanged を再発火させ、Firestore の更新を反映する
+      const data = (await res.json()) as { success: boolean; customToken?: string }
+      console.log('[AuthCallback] 成功')
+
+      if (!data.customToken) {
+        setError('認証トークンが取得できませんでした。もう一度お試しください。')
+        return
+      }
+
+      try {
+        await signInWithCustomToken(auth, data.customToken)
+      } catch (signInErr) {
+        console.error('[AuthCallback] signInWithCustomToken 失敗:', signInErr)
+        setError('サインインに失敗しました。もう一度お試しください。')
+        return
+      }
+
+      // フルリロードで onAuthStateChanged + Firestore 読み込みを確実に完了させる
       window.location.href = '/cast/home'
     }
 

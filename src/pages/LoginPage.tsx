@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { signInAnonymously, signOut } from 'firebase/auth'
-import { auth } from '../lib/firebase'
+
+const OAUTH_SECRET_KEY = 'stellasync_oauth_secret'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
@@ -10,17 +10,19 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      const { user } = await signInAnonymously(auth)
-      const idToken = await user.getIdToken()
       const res = await fetch(import.meta.env.VITE_AUTH_REDIRECT_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: { 'Content-Type': 'application/json' },
       })
       if (!res.ok) throw new Error('redirect request failed')
-      const { redirectUrl } = (await res.json()) as { redirectUrl: string }
+      const { redirectUrl, sessionSecret } = (await res.json()) as {
+        redirectUrl: string
+        sessionSecret: string
+      }
+      // Login CSRF 対策: sessionSecret をブラウザに保持し callback で検証する
+      localStorage.setItem(OAUTH_SECRET_KEY, sessionSecret)
       window.location.href = redirectUrl
     } catch {
-      await signOut(auth).catch(() => undefined)
       setError('サインインに失敗しました。もう一度お試しください。')
       setLoading(false)
     }

@@ -3,7 +3,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
-import { createHash, randomBytes } from 'crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import { encrypt, decrypt } from './crypto'
 import type { OAuthSession, AccountTokens, TokenResponse } from './types'
 
@@ -38,11 +38,13 @@ function buildCodeChallenge(verifier: string): string {
  * 未サインイン状態で呼び出し可能（認証不要）。
  * uid は authXCallback で X user_id から確定するため、ここでは保存しない。
  *
- * レスポンス: { redirectUrl: string } — クライアントはこの URL に遷移する
+ * レスポンス: { redirectUrl: string, sessionSecret: string }
+ *   sessionSecret はフロントエンドが localStorage に保存し、callback で送り返す（Login CSRF 対策）
  * Firestore: oauth_sessions/{state} に以下を保存（TTL: 10分）
- *   code_verifier : string    – PKCE verifier（callback で使用）
- *   expires_at    : Timestamp – 現在時刻 + 10分
- *   created_at    : Timestamp – serverTimestamp
+ *   code_verifier  : string    – PKCE verifier（callback で使用）
+ *   session_secret : string    – ブラウザバインド用トークン（hex 64文字）
+ *   expires_at     : Timestamp – 現在時刻 + 10分
+ *   created_at     : Timestamp – serverTimestamp
  */
 export const authXRedirect = onRequest(
   { cors: CORS_ORIGINS, secrets: [X_CLIENT_ID, X_REDIRECT_URI], region: 'asia-northeast2' },
@@ -56,10 +58,13 @@ export const authXRedirect = onRequest(
     const codeVerifier = randomBytes(32).toString('base64url')
     const codeChallenge = buildCodeChallenge(codeVerifier)
     const state = randomBytes(32).toString('hex')
+    // Login CSRF 対策: フローを開始したブラウザだけが知るシークレット
+    const sessionSecret = randomBytes(32).toString('hex')
 
     const db = getFirestore()
     await db.collection('oauth_sessions').doc(state).set({
       code_verifier: codeVerifier,
+      session_secret: sessionSecret,
       expires_at: new Date(Date.now() + SESSION_TTL_MS),
       created_at: FieldValue.serverTimestamp(),
     })
@@ -74,7 +79,7 @@ export const authXRedirect = onRequest(
       code_challenge_method: 'S256',
     })
 
-    res.json({ redirectUrl: `${X_AUTH_URL}?${params.toString()}` })
+    res.json({ redirectUrl: `${X_AUTH_URL}?${params.toString()}`, sessionSecret })
   }
 )
 
@@ -105,15 +110,16 @@ export const authXCallback = onRequest(
       return
     }
 
-    // フロントエンドは JSON body で送る。クエリパラメータにも対応（フォールバック）
-    const code  = (req.body?.code  ?? req.query['code'])  as string | undefined
-    const state = (req.body?.state ?? req.query['state']) as string | undefined
+    // フロントエンドは JSON body で送る
+    const code          = req.body?.code           as string | undefined
+    const state         = req.body?.state          as string | undefined
+    const sessionSecret = req.body?.session_secret as string | undefined
 
-    console.log('[authXCallback] code present:', !!code, 'state present:', !!state)
+    console.log('[authXCallback] code present:', !!code, 'state present:', !!state, 'secret present:', !!sessionSecret)
 
-    if (!code || !state) {
-      console.error('[authXCallback] Missing code or state. body keys:', Object.keys(req.body ?? {}), 'query keys:', Object.keys(req.query))
-      res.status(400).json({ error: 'code and state are required' })
+    if (!code || !state || !sessionSecret) {
+      console.error('[authXCallback] Missing required fields. body keys:', Object.keys(req.body ?? {}))
+      res.status(400).json({ error: 'code, state and session_secret are required' })
       return
     }
 
@@ -132,6 +138,19 @@ export const authXCallback = onRequest(
     if (new Date() > session.expires_at.toDate()) {
       await sessionRef.delete()
       res.status(400).json({ error: 'Session expired' })
+      return
+    }
+
+    // Login CSRF 対策: フローを開始したブラウザだけが sessionSecret を知っている
+    const providedBuf = Buffer.from(sessionSecret, 'hex')
+    const storedBuf   = Buffer.from(session.session_secret, 'hex')
+    if (
+      providedBuf.length === 0 ||
+      providedBuf.length !== storedBuf.length ||
+      !timingSafeEqual(providedBuf, storedBuf)
+    ) {
+      console.error('[authXCallback] session_secret mismatch — possible CSRF attempt')
+      res.status(400).json({ error: 'Invalid session' })
       return
     }
 

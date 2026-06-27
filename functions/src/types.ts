@@ -9,6 +9,7 @@ import type { Timestamp } from 'firebase-admin/firestore'
  */
 export interface OAuthSession {
   code_verifier: string
+  session_secret: string  // Login CSRF 対策：フローを開始したブラウザにバインドする
   uid?: string  // フェーズA以降は不使用。既存セッションとの互換のため optional
   expires_at: Timestamp
   created_at: Timestamp
