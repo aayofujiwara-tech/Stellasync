@@ -3,6 +3,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { fetchAndStoreMetrics, X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
+import { refreshXToken } from './oauth'
 import type { Account } from './types'
 
 if (getApps().length === 0) initializeApp()
@@ -24,7 +25,12 @@ export const manualFetch = onCall(
     const account = snap.data() as Account
 
     if (account.token_status !== 'valid') {
-      throw new HttpsError('failed-precondition', 'トークンが無効です。再連携してください')
+      // 即拒否せず、まず1回リフレッシュを試す（成功すれば refreshXToken が status を valid に戻す）
+      try {
+        await refreshXToken(uid, ENCRYPTION_KEY.value())
+      } catch {
+        throw new HttpsError('failed-precondition', 'トークンが無効です。再連携してください')
+      }
     }
 
     // サーバ側クールダウン（last_fetched_at は scheduled/manual 共通で更新される）
