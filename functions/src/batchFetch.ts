@@ -28,11 +28,39 @@ interface XTweet {
     retweet_count: number
   }
   attachments?: { media_keys?: string[] }
+  referenced_tweets?: Array<{ type: 'quoted' | 'replied_to' | 'retweeted'; id: string }>
+  in_reply_to_user_id?: string
 }
 
 interface XTweetsResponse {
   data?: XTweet[]
   errors?: Array<{ message: string; type: string }>
+  includes?: { tweets?: Array<{ id: string; author_id?: string }> }
+}
+
+const GUEST_KEYWORDS = ['ゲスト出勤', 'ゲスト降臨', 'ゲスト出演', 'ゲスト来店']
+export type PostType = 'original' | 'quote' | 'guest' | 'reply'
+
+function classifyPostType(
+  tweet: XTweet,
+  includes: XTweetsResponse['includes'],
+  selfUserId: string,
+  text: string,
+): PostType {
+  // 1. ゲスト最優先
+  if (GUEST_KEYWORDS.some((k) => text.includes(k))) return 'guest'
+  const refs = tweet.referenced_tweets ?? []
+  // 2. 他人の引用RT
+  const quoted = refs.find((r) => r.type === 'quoted')
+  if (quoted) {
+    const qAuthor = includes?.tweets?.find((t) => t.id === quoted.id)?.author_id
+    if (qAuthor && qAuthor !== selfUserId) return 'quote'
+    // 自己引用は original へ
+  }
+  // 3. 他人宛リプライ＝ノイズ
+  if (tweet.in_reply_to_user_id && tweet.in_reply_to_user_id !== selfUserId) return 'reply'
+  // 自分スレ連投・通常投稿・RT・自己引用は original
+  return 'original'
 }
 
 /**
@@ -111,8 +139,8 @@ export async function fetchAndStoreMetrics(
 
   const url =
     `${X_TWEETS_URL}/${accountData.x_user_id}/tweets` +
-    '?tweet.fields=non_public_metrics,organic_metrics,created_at,attachments,text' +
-    '&expansions=attachments.media_keys' +
+    '?tweet.fields=non_public_metrics,organic_metrics,created_at,attachments,text,referenced_tweets,in_reply_to_user_id' +
+    '&expansions=attachments.media_keys,referenced_tweets.id' +
     '&max_results=10'
 
   let tweetRes = await fetch(url, {
@@ -204,6 +232,7 @@ export async function fetchAndStoreMetrics(
         rt_cumulative: rtCumulative,
         fetch_phase: phase,
         has_media: (tweet.attachments?.media_keys?.length ?? 0) > 0,
+        post_type: classifyPostType(tweet, tweetData.includes, accountData.x_user_id, tweet.text ?? ''),
         text: tweet.text ?? '',
         hashtags: extractHashtags(tweet.text ?? ''),
         fetched_at: FieldValue.serverTimestamp(),

@@ -116,6 +116,7 @@ export interface PostHourlyMetrics {
   rt_cumulative: number
   fetch_phase: 'high' | 'low' | 'daily'
   has_media: boolean
+  post_type?: 'original' | 'quote' | 'guest' | 'reply'
   text?: string
   hashtags: string[]
   fetched_at: Timestamp
