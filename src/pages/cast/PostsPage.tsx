@@ -9,6 +9,8 @@ import {
 } from 'recharts'
 import { Image } from 'lucide-react'
 
+type PostType = 'original' | 'quote' | 'guest' | 'reply'
+
 interface HourlyMetric {
   post_id: string
   hour_offset: number
@@ -18,6 +20,7 @@ interface HourlyMetric {
   posted_at: Timestamp | null
   has_media: boolean
   text: string
+  post_type?: PostType
 }
 
 type MetricKey = 'imp_cumulative' | 'like_cumulative' | 'rt_cumulative'
@@ -31,12 +34,20 @@ interface PostGroup {
   latest_rt: number
   hours: HourlyMetric[]
   text: string
+  post_type: PostType
 }
 
 const metricLabels: Record<MetricKey, string> = {
   imp_cumulative:  'IMP',
   like_cumulative: 'いいね',
   rt_cumulative:   'RT',
+}
+
+const TYPE_META: Record<PostType, { label: string; bg: string; fg: string }> = {
+  original: { label: '通常',     bg: '#1A1A24', fg: '#A0A0B0' },
+  quote:    { label: '引用',     bg: '#11243A', fg: '#85B7EB' },
+  guest:    { label: 'ゲスト',   bg: '#211C3A', fg: '#AFA9EC' },
+  reply:    { label: 'リプライ', bg: '#2A2A2E', fg: '#888780' },
 }
 
 function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
@@ -59,6 +70,7 @@ function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
         latest_rt:   latest.rt_cumulative,
         hours:       hours.sort((a, b) => a.hour_offset - b.hour_offset),
         text:        latest.text ?? '',
+        post_type:   latest.post_type ?? 'original',
       }
     })
     .sort((a, b) => {
@@ -79,6 +91,8 @@ function PostCard({ post }: { post: PostGroup }) {
       })
     : '—'
 
+  const meta = TYPE_META[post.post_type]
+
   return (
     <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1A1A24' }}>
       <button
@@ -88,15 +102,28 @@ function PostCard({ post }: { post: PostGroup }) {
       >
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs" style={{ color: '#A0A0B0' }}>{postedAt}</span>
-          {post.has_media && (
-            <span
-              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: '#2A2A3C', color: '#7C6FE0' }}
-            >
-              <Image size={11} />
-              メディア
-            </span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {post.post_type !== 'original' && (
+              <span style={{
+                backgroundColor: meta.bg,
+                color: meta.fg,
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 999,
+              }}>
+                {meta.label}
+              </span>
+            )}
+            {post.has_media && (
+              <span
+                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: '#2A2A3C', color: '#7C6FE0' }}
+              >
+                <Image size={11} />
+                メディア
+              </span>
+            )}
+          </div>
         </div>
         {post.text && (
           <div
@@ -174,10 +201,20 @@ function PostCard({ post }: { post: PostGroup }) {
   )
 }
 
+const FILTER_ORDER: Array<'all' | PostType> = ['all', 'original', 'quote', 'guest', 'reply']
+const FILTER_LABELS: Record<'all' | PostType, string> = {
+  all:      'すべて',
+  original: '通常',
+  quote:    '引用',
+  guest:    'ゲスト',
+  reply:    'リプライ',
+}
+
 export default function PostsPage() {
   const { user } = useAuth()
   const [posts, setPosts] = useState<PostGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'all' | PostType>('all')
 
   useEffect(() => {
     if (!user) return
@@ -214,11 +251,48 @@ export default function PostsPage() {
     )
   }
 
+  const counts: Record<'all' | PostType, number> = {
+    all:      posts.length,
+    original: posts.filter((p) => p.post_type === 'original').length,
+    quote:    posts.filter((p) => p.post_type === 'quote').length,
+    guest:    posts.filter((p) => p.post_type === 'guest').length,
+    reply:    posts.filter((p) => p.post_type === 'reply').length,
+  }
+  const visible = filter === 'all' ? posts : posts.filter((p) => p.post_type === filter)
+
   return (
-    <div className="px-4 py-6 space-y-3">
-      {posts.map((post) => (
-        <PostCard key={post.post_id} post={post} />
-      ))}
+    <div className="py-6 space-y-3">
+      {/* フィルタチップ */}
+      <div className="flex gap-2 px-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        {FILTER_ORDER.map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className="flex-shrink-0 text-xs px-3 py-1.5 rounded-full font-medium"
+            style={{
+              backgroundColor: filter === f ? '#7C6FE0' : '#1A1A24',
+              color:           filter === f ? '#FFFFFF'  : '#A0A0B0',
+              minHeight: '28px',
+            }}
+          >
+            {FILTER_LABELS[f]}({counts[f]})
+          </button>
+        ))}
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="flex items-center justify-center py-16 px-4">
+          <p className="text-sm text-center" style={{ color: '#A0A0B0' }}>
+            該当する投稿がありません
+          </p>
+        </div>
+      ) : (
+        <div className="px-4 space-y-3">
+          {visible.map((post) => (
+            <PostCard key={post.post_id} post={post} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

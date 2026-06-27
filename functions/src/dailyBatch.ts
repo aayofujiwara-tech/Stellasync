@@ -173,19 +173,45 @@ async function aggregatePostMetrics(accountId: string): Promise<void> {
 
   if (latest.size === 0) return
 
+  type PostType = 'original' | 'quote' | 'guest' | 'reply'
+  const bucket = () => ({ impressions: 0, likes: 0, retweets: 0, posts_count: 0 })
+  const by_type: Record<PostType, ReturnType<typeof bucket>> = {
+    original: bucket(), quote: bucket(), guest: bucket(), reply: bucket(),
+  }
+
   let impressions = 0
   let likes = 0
   let retweets = 0
+  let wmC = 0, wmImp = 0, wmLike = 0       // original × メディアあり
+  let womC = 0, womImp = 0, womLike = 0    // original × メディアなし
+
   for (const m of latest.values()) {
     impressions += m.imp_cumulative
     likes += m.like_cumulative
     retweets += m.rt_cumulative
+
+    const t = (m.post_type ?? 'original') as PostType
+    const b = by_type[t] ?? by_type.original
+    b.impressions += m.imp_cumulative
+    b.likes += m.like_cumulative
+    b.retweets += m.rt_cumulative
+    b.posts_count += 1
+
+    if (t === 'original') {
+      if (m.has_media) { wmC++;  wmImp  += m.imp_cumulative; wmLike  += m.like_cumulative }
+      else             { womC++; womImp += m.imp_cumulative; womLike += m.like_cumulative }
+    }
+  }
+
+  const media_breakdown = {
+    with_media:    { posts_count: wmC,  avg_imp: wmC  ? Math.round(wmImp / wmC)   : 0, avg_like: wmC  ? Math.round(wmLike / wmC)   : 0 },
+    without_media: { posts_count: womC, avg_imp: womC ? Math.round(womImp / womC) : 0, avg_like: womC ? Math.round(womLike / womC) : 0 },
   }
 
   await db
     .collection('daily_metrics')
     .doc(`${accountId}_${bizDayStr}`)
-    .set({ impressions, likes, retweets, posts_count: latest.size }, { merge: true })
+    .set({ impressions, likes, retweets, posts_count: latest.size, by_type, media_breakdown }, { merge: true })
 }
 
 /**

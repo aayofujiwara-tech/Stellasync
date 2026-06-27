@@ -93,6 +93,12 @@ export interface DailyMetrics {
   following: number
   tweet_count: number
   posts_count?: number
+  by_type?: Record<'original' | 'quote' | 'guest' | 'reply',
+    { impressions: number; likes: number; retweets: number; posts_count: number }>
+  media_breakdown?: {
+    with_media:    { posts_count: number; avg_imp: number; avg_like: number }
+    without_media: { posts_count: number; avg_imp: number; avg_like: number }
+  }
 }
 
 /**
