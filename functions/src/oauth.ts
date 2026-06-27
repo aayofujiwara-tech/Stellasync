@@ -200,6 +200,12 @@ export const authXCallback = onRequest(
     const uid = `x_${userData.data.id}`
 
     // トークンを AES-256-GCM で暗号化して Firestore に保存
+    // 初回 OAuth（offline.access スコープ）では refresh_token は必ず返る
+    if (!tokenData.refresh_token) {
+      console.error('[authXCallback] No refresh_token in X response')
+      res.status(502).json({ error: 'No refresh token returned from X' })
+      return
+    }
     const encryptedAccessToken = encrypt(tokenData.access_token, ENCRYPTION_KEY.value())
     const encryptedRefreshToken = encrypt(tokenData.refresh_token, ENCRYPTION_KEY.value())
     const tokenExpiresAt = Timestamp.fromDate(
@@ -283,7 +289,9 @@ export async function refreshXToken(uid: string, encryptionKey: string): Promise
   const tokenData = (await tokenRes.json()) as TokenResponse
 
   const encryptedAccessToken = encrypt(tokenData.access_token, encryptionKey)
-  const encryptedRefreshToken = encrypt(tokenData.refresh_token, encryptionKey)
+  // X が新 refresh_token を返さないことがある。返らなければ旧 token を維持（保存破損防止）
+  const newRefreshToken = tokenData.refresh_token ?? refreshToken
+  const encryptedRefreshToken = encrypt(newRefreshToken, encryptionKey)
   const tokenExpiresAt = Timestamp.fromDate(
     new Date(Date.now() + tokenData.expires_in * 1000)
   )
@@ -294,11 +302,12 @@ export async function refreshXToken(uid: string, encryptionKey: string): Promise
     access_token: encryptedAccessToken,
     refresh_token: encryptedRefreshToken,
   })
-  // ステータスメタデータは accounts に更新
+  // ステータスメタデータは accounts に更新。復活したので失効通知ラッチを解除。
   refreshBatch.update(db.collection('accounts').doc(uid), {
     token_expires_at: tokenExpiresAt,
     token_status: 'valid',
     token_checked_at: FieldValue.serverTimestamp(),
+    notification_sent_at: FieldValue.delete(),
   })
   await refreshBatch.commit()
 

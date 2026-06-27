@@ -3,6 +3,8 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
+import { refreshXToken } from './oauth'
+import { X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
 import { notifyTokenRevoked } from './notifications'
 import type { Account, AccountTokens } from './types'
 
@@ -47,7 +49,17 @@ async function checkAccountToken(
     return
   }
 
-  // 401: トークン失効確定 → status 更新 → 通知送信（送信済みなら重複送信を防ぐ）
+  // 401: まず refresh を 1 回試す。成功すれば revoke も通知もしない。
+  // （アクセストークンは約2時間で期限切れになるが refresh_token は生きているケースが大半）
+  try {
+    await refreshXToken(accountId, ENCRYPTION_KEY.value())
+    console.log(`[tokenWatcher] token refreshed on 401 for account ${accountId}`)
+    return
+  } catch (e) {
+    console.warn(`[tokenWatcher] refresh failed for ${accountId}, revoking:`, e)
+  }
+
+  // refresh も失敗 → 失効確定 → status 更新 → 通知送信（送信済みなら重複送信を防ぐ）
   if (accountData.notification_sent_at) {
     await db.collection('accounts').doc(accountId).update({
       token_status: 'revoked',
@@ -86,7 +98,7 @@ export const tokenWatcher = onSchedule(
     schedule: 'every 60 minutes',
     timeZone: 'Asia/Tokyo',
     region: 'asia-northeast2',
-    secrets: [ENCRYPTION_KEY],
+    secrets: [ENCRYPTION_KEY, X_CLIENT_ID, X_CLIENT_SECRET],
   },
   async () => {
     const db = getFirestore()

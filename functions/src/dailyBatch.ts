@@ -3,7 +3,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
-import { fetchAndStoreMetrics } from './batchFetch'
+import { fetchAndStoreMetrics, X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
 import type { Account, AccountTokens, PostHourlyMetrics } from './types'
 
 if (getApps().length === 0) {
@@ -199,7 +199,7 @@ export const dailyBatch = onSchedule(
     schedule: 'every day 10:30',
     timeZone: 'Asia/Tokyo',
     region: 'asia-northeast2',
-    secrets: [ENCRYPTION_KEY],
+    secrets: [ENCRYPTION_KEY, X_CLIENT_ID, X_CLIENT_SECRET],
   },
   async () => {
     const db = getFirestore()
