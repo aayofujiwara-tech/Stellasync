@@ -2,7 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import { fetchAndStoreMetrics } from './batchFetch'
+import { fetchAndStoreMetrics, X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
 import type { Account, StoreData } from './types'
 
 if (getApps().length === 0) {
@@ -103,7 +103,7 @@ async function processStore(
  * Cloud Scheduler: every 15 minutes / asia-northeast2
  */
 export const pollingMaster = onSchedule(
-  { schedule: 'every 15 minutes', region: 'asia-northeast2', secrets: [ENCRYPTION_KEY] },
+  { schedule: 'every 15 minutes', region: 'asia-northeast2', secrets: [ENCRYPTION_KEY, X_CLIENT_ID, X_CLIENT_SECRET] },
   async () => {
     const now = new Date()
     const db = getFirestore()

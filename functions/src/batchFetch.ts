@@ -2,6 +2,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
+import { refreshXToken } from './oauth'
 import type { Account, AccountTokens, PostHourlyMetrics } from './types'
 
 if (getApps().length === 0) {
@@ -9,6 +10,9 @@ if (getApps().length === 0) {
 }
 
 const ENCRYPTION_KEY = defineSecret('ENCRYPTION_KEY')
+// refreshXToken が内部で使用するシークレット（pollingMaster に mount 宣言が必要）
+export const X_CLIENT_ID     = defineSecret('X_CLIENT_ID')
+export const X_CLIENT_SECRET = defineSecret('X_CLIENT_SECRET')
 
 const X_TWEETS_URL = 'https://api.twitter.com/2/users'
 
@@ -42,7 +46,7 @@ export function extractHashtags(text: string): string[] {
 
 /**
  * X API エラーステータスに応じてアカウント状態を更新する。
- *   401 → token_status を 'revoked' に更新
+ *   401 → token_status を 'revoked' に更新（リフレッシュ試行後も失敗した場合）
  *   429 → レート制限のためログ出力のみ
  *   その他 → ログ出力のみ
  */
@@ -66,6 +70,11 @@ export async function handleTokenError(accountId: string, status: number): Promi
 /**
  * X API から直近 10 件の投稿メトリクスを取得して Firestore に保存する。
  *
+ * トークン管理:
+ *   - 事前チェック: token_expires_at が 10 分以内または期限切れなら事前リフレッシュ
+ *   - 401 時: refreshXToken でリフレッシュ後 1 回だけリトライ
+ *   - リフレッシュも失敗した場合のみ token_status: 'revoked' に更新
+ *
  * 保存先: post_hourly_metrics/{post_id}_{hour_offset}（merge: true）
  *   投稿から 24 時間を超えた投稿は phase !== 'daily' の場合スキップ。
  *   デルタ値は前の hour_offset ドキュメントとの差分から算出。
@@ -86,7 +95,19 @@ export async function fetchAndStoreMetrics(
     console.warn(`[batchFetch] skipping ${accountId}: no tokens stored`)
     return
   }
-  const accessToken = decrypt((tokenDoc.data() as AccountTokens).access_token, ENCRYPTION_KEY.value())
+  let accessToken = decrypt((tokenDoc.data() as AccountTokens).access_token, ENCRYPTION_KEY.value())
+
+  // 事前リフレッシュ: 期限まで 10 分以内または既に期限切れ
+  const expiresAt = accountData.token_expires_at?.toDate()
+  const refreshThreshold = new Date(Date.now() + 10 * 60 * 1000)
+  if (!expiresAt || expiresAt <= refreshThreshold) {
+    try {
+      accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
+      console.log(`[batchFetch] proactive token refresh succeeded for ${accountId}`)
+    } catch (e) {
+      console.warn(`[batchFetch] proactive refresh failed for ${accountId}, using existing token:`, e)
+    }
+  }
 
   const url =
     `${X_TWEETS_URL}/${accountData.x_user_id}/tweets` +
@@ -94,9 +115,21 @@ export async function fetchAndStoreMetrics(
     '&expansions=attachments.media_keys' +
     '&max_results=10'
 
-  const tweetRes = await fetch(url, {
+  let tweetRes = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
+
+  // 401: リフレッシュ後 1 回リトライ。それでも失敗したら revoke
+  if (!tweetRes.ok && tweetRes.status === 401) {
+    try {
+      accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
+      tweetRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      console.log(`[batchFetch] token refreshed on 401, retry status: ${tweetRes.status} for ${accountId}`)
+    } catch {
+      await handleTokenError(accountId, 401)
+      return
+    }
+  }
 
   if (!tweetRes.ok) {
     await handleTokenError(accountId, tweetRes.status)
