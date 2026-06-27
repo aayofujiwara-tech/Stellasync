@@ -9,6 +9,8 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 
+type Scope = 'all' | 'original'
+
 type ManualFetchResult =
   | { ok: true }
   | { ok: false; reason: 'cooldown'; retryAfterSec: number }
@@ -23,6 +25,7 @@ interface DailyMetric {
   impressions: number
   followers: number
   posts_count: number
+  by_type?: { original?: { impressions?: number; posts_count?: number } }
 }
 
 function SkeletonCard() {
@@ -35,15 +38,25 @@ function SkeletonCard() {
   )
 }
 
+const SCOPE_KEY = 'stellasync_metric_scope'
+
 export default function HomePage() {
   const { user } = useAuth()
-  const [account, setAccount]         = useState<AccountData | null>(null)
-  const [metrics, setMetrics]         = useState<DailyMetric[]>([])
-  const [loading, setLoading]         = useState(true)
+  const [account, setAccount]           = useState<AccountData | null>(null)
+  const [metrics, setMetrics]           = useState<DailyMetric[]>([])
+  const [loading, setLoading]           = useState(true)
   const [fetchLoading, setFetchLoading] = useState(false)
-  const [cd, setCd]                   = useState(0)
-  const [fetchError, setFetchError]   = useState<string | null>(null)
-  const [fetchOk, setFetchOk]         = useState(false)
+  const [cd, setCd]                     = useState(0)
+  const [fetchError, setFetchError]     = useState<string | null>(null)
+  const [fetchOk, setFetchOk]           = useState(false)
+  const [scope, setScope]               = useState<Scope>(
+    (localStorage.getItem(SCOPE_KEY) as Scope) || 'all'
+  )
+
+  const setScopePersist = (s: Scope) => {
+    setScope(s)
+    localStorage.setItem(SCOPE_KEY, s)
+  }
 
   const loadData = useCallback(async () => {
     if (!user) return
@@ -73,7 +86,6 @@ export default function HomePage() {
     loadData()
   }, [loadData])
 
-  // クールダウンカウントダウン
   useEffect(() => {
     if (cd <= 0) return
     const timer = setTimeout(() => setCd((prev) => prev - 1), 1000)
@@ -107,19 +119,21 @@ export default function HomePage() {
   const thisWeek = metrics.slice(0, 7)
   const lastWeek  = metrics.slice(7, 14)
 
-  const sumImp = (data: DailyMetric[]) =>
-    data.reduce((s, m) => s + (m.impressions ?? 0), 0)
+  const impOf   = (m: DailyMetric) =>
+    scope === 'original' ? (m.by_type?.original?.impressions ?? 0) : (m.impressions ?? 0)
+  const postsOf = (m: DailyMetric) =>
+    scope === 'original' ? (m.by_type?.original?.posts_count ?? 0) : (m.posts_count ?? 0)
 
-  const totalImps      = sumImp(thisWeek)
-  const prevImps       = sumImp(lastWeek)
-  const impChange      = prevImps > 0
+  const totalImps  = thisWeek.reduce((s, m) => s + impOf(m), 0)
+  const prevImps   = lastWeek.reduce((s, m) => s + impOf(m), 0)
+  const impChange  = prevImps > 0
     ? Math.round(((totalImps - prevImps) / prevImps) * 100)
     : null
 
   const latestFollowers  = thisWeek[0]?.followers ?? 0
   const oldestFollowers  = thisWeek[thisWeek.length - 1]?.followers ?? latestFollowers
   const weekFollowerGain = latestFollowers - oldestFollowers
-  const totalPosts       = thisWeek.reduce((s, m) => s + (m.posts_count ?? 0), 0)
+  const totalPosts       = thisWeek.reduce((s, m) => s + postsOf(m), 0)
   const bestHour         = account?.best_times?.[0]?.hour
 
   if (loading) {
@@ -170,6 +184,24 @@ export default function HomePage() {
         <p className="text-xs" style={{ color: '#D85A30' }}>{fetchError}</p>
       )}
 
+      {/* スコープトグル */}
+      <div className="flex gap-1.5">
+        {(['all', 'original'] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setScopePersist(s)}
+            className="px-3 py-1 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: scope === s ? '#7C6FE0' : '#1A1A24',
+              color:           scope === s ? '#FFFFFF'  : '#A0A0B0',
+              minHeight: '28px',
+            }}
+          >
+            {s === 'all' ? '全体' : '通常のみ'}
+          </button>
+        ))}
+      </div>
+
       <div className="h-px" style={{ backgroundColor: '#1A1A24' }} />
 
       {!hasData ? (
@@ -182,7 +214,9 @@ export default function HomePage() {
         <>
           {/* IMP */}
           <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
-            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>今週のIMP</p>
+            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>
+              {scope === 'original' ? '今週のIMP（通常のみ）' : '今週のIMP'}
+            </p>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold" style={{ color: '#7C6FE0' }}>
                 {totalImps.toLocaleString()}
@@ -201,7 +235,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* フォロワー */}
+          {/* フォロワー（Scope 非対象） */}
           <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
             <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>フォロワー</p>
             <div className="flex items-baseline gap-2">
@@ -221,14 +255,16 @@ export default function HomePage() {
 
           {/* 投稿数 */}
           <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
-            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>今週の投稿</p>
+            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>
+              {scope === 'original' ? '今週の投稿（通常のみ）' : '今週の投稿'}
+            </p>
             <span className="text-3xl font-bold" style={{ color: '#7C6FE0' }}>
               {totalPosts}
               <span className="text-base font-normal ml-1" style={{ color: '#A0A0B0' }}>件</span>
             </span>
           </div>
 
-          {/* ベストタイム */}
+          {/* ベストタイム（Scope 非対象） */}
           {bestHour !== undefined && (
             <>
               <div className="h-px" style={{ backgroundColor: '#1A1A24' }} />

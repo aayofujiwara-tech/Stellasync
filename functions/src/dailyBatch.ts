@@ -122,6 +122,8 @@ async function calculateBestTimes(accountId: string): Promise<void> {
 
   for (const doc of snap.docs) {
     const m = doc.data() as PostHourlyMetrics
+    // ベスト投稿時間は reply（他人宛リプライ）を除外。post_type 無しの旧データは original 扱いで含める。
+    if ((m.post_type ?? 'original') === 'reply') continue
     const arr = byHour.get(m.posted_hour) ?? []
     arr.push(m.imp_delta)
     byHour.set(m.posted_hour, arr)

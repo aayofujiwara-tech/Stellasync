@@ -12,6 +12,7 @@ import {
 
 type MetricTab = 'impressions' | 'likes' | 'retweets' | 'followers'
 type PeriodTab  = 'week' | 'month'
+type Scope      = 'all' | 'original'
 
 interface DailyMetric {
   date: Timestamp
@@ -19,6 +20,7 @@ interface DailyMetric {
   likes: number
   retweets: number
   followers: number
+  by_type?: { original?: { impressions?: number; likes?: number; retweets?: number } }
 }
 
 const metricTabs: { key: MetricTab; label: string }[] = [
@@ -28,22 +30,31 @@ const metricTabs: { key: MetricTab; label: string }[] = [
   { key: 'followers',   label: 'フォロワー' },
 ]
 
-function extractMetric(d: DailyMetric, m: MetricTab): number {
-  const values: Record<MetricTab, number> = {
-    impressions: d.impressions,
-    likes:       d.likes,
-    retweets:    d.retweets,
-    followers:   d.followers,
+function extractMetric(d: DailyMetric, m: MetricTab, scope: Scope): number {
+  if (m === 'followers') return d.followers ?? 0
+  if (scope === 'original') {
+    const o = d.by_type?.original
+    return (m === 'impressions' ? o?.impressions : m === 'likes' ? o?.likes : o?.retweets) ?? 0
   }
-  return values[m] ?? 0
+  return (m === 'impressions' ? d.impressions : m === 'likes' ? d.likes : d.retweets) ?? 0
 }
+
+const SCOPE_KEY = 'stellasync_metric_scope'
 
 export default function GraphPage() {
   const { user } = useAuth()
   const [metric, setMetric] = useState<MetricTab>('impressions')
   const [period, setPeriod] = useState<PeriodTab>('week')
-  const [data, setData] = useState<DailyMetric[]>([])
+  const [scope, setScope]   = useState<Scope>(
+    (localStorage.getItem(SCOPE_KEY) as Scope) || 'all'
+  )
+  const [data, setData]     = useState<DailyMetric[]>([])
   const [loading, setLoading] = useState(true)
+
+  const setScopePersist = (s: Scope) => {
+    setScope(s)
+    localStorage.setItem(SCOPE_KEY, s)
+  }
 
   useEffect(() => {
     if (!user) return
@@ -63,13 +74,15 @@ export default function GraphPage() {
       .finally(() => setLoading(false))
   }, [user, period])
 
+  const isFollowers = metric === 'followers'
+
   const chartData = data.map((d) => ({
     date: d.date
       ? new Date(d.date.toMillis()).toLocaleDateString('ja-JP', {
           month: 'numeric', day: 'numeric',
         })
       : '',
-    value: extractMetric(d, metric),
+    value: extractMetric(d, metric, scope),
   }))
 
   const tooltipStyle = {
@@ -98,6 +111,24 @@ export default function GraphPage() {
             }}
           >
             {label}
+          </button>
+        ))}
+      </div>
+
+      {/* スコープトグル */}
+      <div className="flex gap-1.5 mb-3" style={{ opacity: isFollowers ? 0.4 : 1 }}>
+        {(['all', 'original'] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => { if (!isFollowers) setScopePersist(s) }}
+            className="px-3 py-1 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: scope === s ? '#7C6FE0' : '#1A1A24',
+              color:           scope === s ? '#FFFFFF'  : '#A0A0B0',
+              minHeight: '28px',
+            }}
+          >
+            {s === 'all' ? '全体' : '通常のみ'}
           </button>
         ))}
       </div>
