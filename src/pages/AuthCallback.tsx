@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signInWithCustomToken } from 'firebase/auth'
-import { auth } from '../lib/firebase'
 
 const CALLBACK_ENDPOINT = import.meta.env.VITE_AUTH_CALLBACK_URL
 
@@ -50,23 +48,10 @@ export default function AuthCallback() {
         return
       }
 
-      const data = (await res.json()) as { success: boolean; customToken?: string }
+      const data: unknown = await res.json()
       console.log('[AuthCallback] 成功:', data)
-
-      if (!data.customToken) {
-        setError('認証トークンが取得できませんでした。もう一度お試しください。')
-        return
-      }
-
-      try {
-        await signInWithCustomToken(auth, data.customToken)
-      } catch (signInErr) {
-        console.error('[AuthCallback] signInWithCustomToken 失敗:', signInErr)
-        setError('サインインに失敗しました。もう一度お試しください。')
-        return
-      }
-
-      navigate('/cast/home', { replace: true })
+      // フルリロードで onAuthStateChanged を再発火させ、Firestore の更新を反映する
+      window.location.href = '/cast/home'
     }
 
     run()

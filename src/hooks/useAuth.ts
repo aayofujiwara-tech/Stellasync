@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { onAuthStateChanged, type User } from 'firebase/auth'
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
 
@@ -27,23 +27,28 @@ export function useAuth(): AuthState {
 
       try {
         const accountSnap = await getDoc(doc(db, 'accounts', user.uid))
-        let role: Role = 'cast'
 
-        if (accountSnap.exists()) {
-          const orgId = accountSnap.data().org_id as string | undefined
-          if (orgId) {
-            const memberSnap = await getDoc(
-              doc(db, 'organizations', orgId, 'members', user.uid),
-            )
-            if (memberSnap.exists()) {
-              role = (memberSnap.data().role as Role) ?? 'cast'
-            }
+        // X OAuth 未完了の匿名ユーザーは未認証として扱う
+        if (!accountSnap.exists() || !accountSnap.data().x_user_id) {
+          await signOut(auth)
+          setState({ user: null, role: null, loading: false })
+          return
+        }
+
+        let role: Role = 'cast'
+        const orgId = accountSnap.data().org_id as string | undefined
+        if (orgId) {
+          const memberSnap = await getDoc(
+            doc(db, 'organizations', orgId, 'members', user.uid),
+          )
+          if (memberSnap.exists()) {
+            role = (memberSnap.data().role as Role) ?? 'cast'
           }
         }
 
         setState({ user, role, loading: false })
       } catch {
-        setState({ user, role: 'cast', loading: false })
+        setState({ user: null, role: null, loading: false })
       }
     })
 
