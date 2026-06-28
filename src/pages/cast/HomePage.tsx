@@ -23,9 +23,11 @@ interface AccountData {
 interface DailyMetric {
   date: Timestamp
   impressions: number
+  likes: number
+  retweets: number
   followers: number
   posts_count: number
-  by_type?: { original?: { impressions?: number; posts_count?: number } }
+  by_type?: { original?: { impressions?: number; likes?: number; retweets?: number; posts_count?: number } }
 }
 
 function SkeletonCard() {
@@ -123,12 +125,20 @@ export default function HomePage() {
     scope === 'original' ? (m.by_type?.original?.impressions ?? 0) : (m.impressions ?? 0)
   const postsOf = (m: DailyMetric) =>
     scope === 'original' ? (m.by_type?.original?.posts_count ?? 0) : (m.posts_count ?? 0)
+  const likesOf = (m: DailyMetric) =>
+    scope === 'original' ? (m.by_type?.original?.likes ?? 0) : (m.likes ?? 0)
+  const rtOf    = (m: DailyMetric) =>
+    scope === 'original' ? (m.by_type?.original?.retweets ?? 0) : (m.retweets ?? 0)
 
   const totalImps  = thisWeek.reduce((s, m) => s + impOf(m), 0)
   const prevImps   = lastWeek.reduce((s, m) => s + impOf(m), 0)
   const impChange  = prevImps > 0
     ? Math.round(((totalImps - prevImps) / prevImps) * 100)
     : null
+
+  const totalLikes = thisWeek.reduce((s, m) => s + likesOf(m), 0)
+  const totalRt    = thisWeek.reduce((s, m) => s + rtOf(m), 0)
+  const weekER     = totalImps > 0 ? ((totalLikes + totalRt) / totalImps) * 100 : null
 
   const latestFollowers  = thisWeek[0]?.followers ?? 0
   const oldestFollowers  = thisWeek[thisWeek.length - 1]?.followers ?? latestFollowers
@@ -233,6 +243,16 @@ export default function HomePage() {
                 </span>
               )}
             </div>
+          </div>
+
+          {/* ER */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
+            <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>
+              {scope === 'original' ? '今週のER（通常のみ）' : '今週のER'}
+            </p>
+            <span className="text-3xl font-bold" style={{ color: '#7C6FE0' }}>
+              {weekER !== null ? `${weekER.toFixed(1)}%` : '—'}
+            </span>
           </div>
 
           {/* フォロワー（Scope 非対象） */}

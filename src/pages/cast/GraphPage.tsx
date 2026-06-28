@@ -10,7 +10,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
-type MetricTab = 'impressions' | 'likes' | 'retweets' | 'followers'
+type MetricTab = 'impressions' | 'likes' | 'retweets' | 'followers' | 'er'
 type PeriodTab  = 'week' | 'month'
 type Scope      = 'all' | 'original'
 
@@ -28,10 +28,17 @@ const metricTabs: { key: MetricTab; label: string }[] = [
   { key: 'likes',       label: 'いいね' },
   { key: 'retweets',    label: 'RT' },
   { key: 'followers',   label: 'フォロワー' },
+  { key: 'er',          label: 'ER' },
 ]
 
 function extractMetric(d: DailyMetric, m: MetricTab, scope: Scope): number {
   if (m === 'followers') return d.followers ?? 0
+  if (m === 'er') {
+    const imp = scope === 'original' ? (d.by_type?.original?.impressions ?? 0) : (d.impressions ?? 0)
+    const lk  = scope === 'original' ? (d.by_type?.original?.likes ?? 0)       : (d.likes ?? 0)
+    const rt  = scope === 'original' ? (d.by_type?.original?.retweets ?? 0)    : (d.retweets ?? 0)
+    return imp > 0 ? Number((((lk + rt) / imp) * 100).toFixed(2)) : 0
+  }
   if (scope === 'original') {
     const o = d.by_type?.original
     return (m === 'impressions' ? o?.impressions : m === 'likes' ? o?.likes : o?.retweets) ?? 0

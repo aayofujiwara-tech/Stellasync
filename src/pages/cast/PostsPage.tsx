@@ -158,6 +158,14 @@ function PostCard({ post }: { post: PostGroup }) {
             <span style={{ color: '#A0A0B0' }}>RT </span>
             <span style={{ color: '#FFFFFF' }}>{post.latest_rt.toLocaleString()}</span>
           </span>
+          {post.latest_imp > 0 && (
+            <span>
+              <span style={{ color: '#A0A0B0' }}>ER </span>
+              <span style={{ color: '#7C6FE0', fontWeight: 600 }}>
+                {(((post.latest_like + post.latest_rt) / post.latest_imp) * 100).toFixed(1)}%
+              </span>
+            </span>
+          )}
         </div>
       </button>
 
