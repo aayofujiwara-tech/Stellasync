@@ -187,6 +187,7 @@ export async function fetchAndStoreMetrics(
 
   const now = new Date()
   const batch = db.batch()
+  let newestMs = 0
 
   for (const tweet of tweetData.data) {
     if (!tweet.created_at) continue
@@ -195,6 +196,9 @@ export async function fetchAndStoreMetrics(
     const elapsedMs = now.getTime() - postedAt.getTime()
     const hoursSincePost = elapsedMs / (60 * 60 * 1000)
     const hourOffset = Math.floor(hoursSincePost)
+
+    // newest_post_at 用に先に更新（24h超の投稿でも最新時刻は正しく記録）
+    newestMs = Math.max(newestMs, postedAt.getTime())
 
     // 24時間超の投稿は daily フェーズ以外スキップ
     if (hoursSincePost > 24 && phase !== 'daily') continue
@@ -224,6 +228,7 @@ export async function fetchAndStoreMetrics(
 
     const docId = `${tweet.id}_${hourOffset}`
     const docRef = db.collection('post_hourly_metrics').doc(docId)
+    const postType = classifyPostType(tweet, tweetData.includes, accountData.x_user_id, tweet.text ?? '')
 
     batch.set(
       docRef,
@@ -245,18 +250,44 @@ export async function fetchAndStoreMetrics(
         fetch_phase: phase,
         has_media: (tweet.attachments?.media_keys?.length ?? 0) > 0,
         media_url: firstMediaThumb(tweet, tweetData.includes),
-        post_type: classifyPostType(tweet, tweetData.includes, accountData.x_user_id, tweet.text ?? ''),
+        post_type: postType,
         text: tweet.text ?? '',
         hashtags: extractHashtags(tweet.text ?? ''),
         fetched_at: FieldValue.serverTimestamp(),
       },
       { merge: true }
     )
+
+    // 初速サンプル（投稿後 1.05h 以内のみ）
+    if (hoursSincePost <= 1.05) {
+      const elapsedMin = elapsedMs / 60000
+      const slot = Math.min(60, Math.floor(elapsedMin / 15) * 15)
+      batch.set(
+        db.collection('post_velocity').doc(tweet.id),
+        {
+          post_id: tweet.id,
+          cast_id: accountId,
+          posted_at: Timestamp.fromDate(postedAt),
+          post_type: postType,
+          has_media: (tweet.attachments?.media_keys?.length ?? 0) > 0,
+          samples: {
+            [String(slot)]: {
+              imp: impCumulative,
+              like: likeCumulative,
+              rt: rtCumulative,
+              at: Timestamp.fromDate(now),
+            },
+          },
+        },
+        { merge: true },
+      )
+    }
   }
 
   await batch.commit()
 
   await db.collection('accounts').doc(accountId).update({
     last_fetched_at: FieldValue.serverTimestamp(),
+    ...(newestMs > 0 ? { newest_post_at: Timestamp.fromMillis(newestMs) } : {}),
   })
 }

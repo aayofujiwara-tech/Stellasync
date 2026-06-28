@@ -30,6 +30,7 @@ export interface Account {
   token_checked_at: Timestamp
   notification_sent_at?: Timestamp | null
   last_fetched_at?: Timestamp
+  newest_post_at?: Timestamp
   is_active?: boolean
   deactivated_at?: Timestamp | null
   deactivated_by?: string | null
@@ -99,6 +100,19 @@ export interface DailyMetrics {
     with_media:    { posts_count: number; avg_imp: number; avg_like: number }
     without_media: { posts_count: number; avg_imp: number; avg_like: number }
   }
+}
+
+/**
+ * post_velocity/{post_id}
+ * 投稿後1時間を15分解像度で蓄積する初速サンプル。将来の velocity ランキング用。
+ */
+export interface PostVelocity {
+  post_id: string
+  cast_id: string
+  posted_at: Timestamp
+  post_type: 'original' | 'quote' | 'guest' | 'reply'
+  has_media: boolean
+  samples: Record<string, { imp: number; like: number; rt: number; at: Timestamp }>
 }
 
 /**

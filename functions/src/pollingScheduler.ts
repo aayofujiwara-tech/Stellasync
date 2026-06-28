@@ -78,12 +78,21 @@ async function processStore(
     const lastFetch = data.last_fetched_at?.toDate() ?? new Date(0)
     const minutesSince = (now.getTime() - lastFetch.getTime()) / 60000
 
-    const interval =
-      phase === 'high'
+    const newestPostAt = data.newest_post_at?.toDate()
+    const liveAgeMin = newestPostAt ? (now.getTime() - newestPostAt.getTime()) / 60000 : Infinity
+
+    let interval: number
+    if (phase === 'daily') {
+      interval = 1440
+    } else if (liveAgeMin < 60) {
+      interval = 15                                     // バースト：新規投稿を密に追跡
+    } else if (liveAgeMin < 1440) {
+      interval = 60                                     // 毎時：24h以内の追跡
+    } else {
+      interval = phase === 'high'                       // 鮮度高い投稿なし → 店舗フェーズで発見
         ? store.polling_config.high_freq_interval
-        : phase === 'low'
-        ? store.polling_config.low_freq_interval
-        : 1440
+        : store.polling_config.low_freq_interval
+    }
 
     // インターバル未満（1分の余裕込み）はスキップ
     if (minutesSince < interval - 1) continue
