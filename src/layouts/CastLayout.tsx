@@ -11,14 +11,19 @@ const tabs = [
 ] as const
 
 export default function CastLayout() {
-  const { user, loading } = useAuth()
+  const { user, loading, role } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return
+    if (!user) {
       navigate('/login', { replace: true })
+    } else if (role === 'admin') {
+      navigate('/admin', { replace: true })
+    } else if (role === 'area_manager') {
+      navigate('/manager', { replace: true })
     }
-  }, [user, loading, navigate])
+  }, [user, loading, role, navigate])
 
   if (loading) {
     return (

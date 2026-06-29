@@ -78,7 +78,7 @@ export default function AuthCallback() {
       }
 
       // フルリロードで onAuthStateChanged + Firestore 読み込みを確実に完了させる
-      window.location.href = '/cast/home'
+      window.location.href = '/'
     }
 
     run()
