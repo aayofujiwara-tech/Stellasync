@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useAuth } from '../../hooks/useAuth'
+import { Link } from 'react-router-dom'
 import { TrendingUp } from 'lucide-react'
 
 interface AccountDoc {
@@ -280,13 +281,13 @@ export default function OverviewPage() {
                       {cast.stats.totalPosts}
                     </p>
                     <div className="flex justify-end">
-                      <span
-                        className="text-xs px-2 py-1 rounded cursor-not-allowed"
-                        style={{ color: '#505060', backgroundColor: '#222230' }}
-                        title="詳細ビューは次フェーズで実装予定"
+                      <Link
+                        to={`/detail/cast/${cast.uid}/home`}
+                        className="text-xs px-2 py-1 rounded"
+                        style={{ color: '#7C6FE0', backgroundColor: '#1E1E30' }}
                       >
                         詳細
-                      </span>
+                      </Link>
                     </div>
                   </div>
                 )

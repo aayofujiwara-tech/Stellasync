@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useAuth } from '../../hooks/useAuth'
+import { useTargetCastId } from '../../hooks/useTargetCastId'
 import { db } from '../../lib/firebase'
 import {
   collection, query, where, getDocs, type Timestamp,
@@ -231,17 +231,17 @@ const FILTER_LABELS: Record<'all' | PostType, string> = {
 }
 
 export default function PostsPage() {
-  const { user } = useAuth()
+  const { targetCastId } = useTargetCastId()
   const [posts, setPosts] = useState<PostGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | PostType>('all')
 
   useEffect(() => {
-    if (!user) return
+    if (!targetCastId) return
     getDocs(
       query(
         collection(db, 'post_hourly_metrics'),
-        where('cast_id', '==', user.uid),
+        where('cast_id', '==', targetCastId),
       ),
     )
       .then((snap) => {
@@ -249,7 +249,7 @@ export default function PostsPage() {
         setPosts(groupByPost(metrics))
       })
       .finally(() => setLoading(false))
-  }, [user])
+  }, [targetCastId])
 
   if (loading) {
     return (

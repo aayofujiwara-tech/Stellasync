@@ -5,6 +5,7 @@ import AuthCallback from './pages/AuthCallback'
 import CastLayout from './layouts/CastLayout'
 import AdminLayout from './layouts/AdminLayout'
 import ManagerLayout from './layouts/ManagerLayout'
+import CastDetailLayout from './layouts/CastDetailLayout'
 import HomePage from './pages/cast/HomePage'
 import PostsPage from './pages/cast/PostsPage'
 import GraphPage from './pages/cast/GraphPage'
@@ -65,6 +66,14 @@ export default function App() {
         {/* エリアマネージャー画面（role: area_manager） */}
         <Route path="/manager" element={<ManagerLayout />}>
           <Route index element={<OverviewPage />} />
+        </Route>
+
+        {/* 詳細ビュー（admin/manager が指定キャストを閲覧） */}
+        <Route path="/detail/cast/:castId" element={<CastDetailLayout />}>
+          <Route index element={<Navigate to="home" replace />} />
+          <Route path="home"  element={<HomePage />} />
+          <Route path="posts" element={<PostsPage />} />
+          <Route path="graph" element={<GraphPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

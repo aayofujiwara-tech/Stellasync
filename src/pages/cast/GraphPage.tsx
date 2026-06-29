@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useAuth } from '../../hooks/useAuth'
+import { useTargetCastId } from '../../hooks/useTargetCastId'
 import { db } from '../../lib/firebase'
 import {
   collection, query, where, orderBy, limit, getDocs, type Timestamp,
@@ -49,7 +49,7 @@ function extractMetric(d: DailyMetric, m: MetricTab, scope: Scope): number {
 const SCOPE_KEY = 'stellasync_metric_scope'
 
 export default function GraphPage() {
-  const { user } = useAuth()
+  const { targetCastId } = useTargetCastId()
   const [metric, setMetric] = useState<MetricTab>('impressions')
   const [period, setPeriod] = useState<PeriodTab>('week')
   const [scope, setScope]   = useState<Scope>(
@@ -64,13 +64,13 @@ export default function GraphPage() {
   }
 
   useEffect(() => {
-    if (!user) return
+    if (!targetCastId) return
     setLoading(true)
     const days = period === 'week' ? 7 : 30
     getDocs(
       query(
         collection(db, 'daily_metrics'),
-        where('cast_id', '==', user.uid),
+        where('cast_id', '==', targetCastId),
         orderBy('date', 'desc'),
         limit(days),
       ),
@@ -79,7 +79,7 @@ export default function GraphPage() {
         setData(snap.docs.map((d) => d.data() as DailyMetric).reverse()),
       )
       .finally(() => setLoading(false))
-  }, [user, period])
+  }, [targetCastId, period])
 
   const isFollowers = metric === 'followers'
 

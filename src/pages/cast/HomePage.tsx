@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '../../hooks/useAuth'
+import { useTargetCastId } from '../../hooks/useTargetCastId'
 import { db, functions } from '../../lib/firebase'
 import {
   doc, getDoc,
@@ -43,7 +43,7 @@ function SkeletonCard() {
 const SCOPE_KEY = 'stellasync_metric_scope'
 
 export default function HomePage() {
-  const { user } = useAuth()
+  const { targetCastId, isViewingOther } = useTargetCastId()
   const [account, setAccount]           = useState<AccountData | null>(null)
   const [metrics, setMetrics]           = useState<DailyMetric[]>([])
   const [loading, setLoading]           = useState(true)
@@ -61,14 +61,14 @@ export default function HomePage() {
   }
 
   const loadData = useCallback(async () => {
-    if (!user) return
+    if (!targetCastId) return
     try {
       const [accountSnap, metricsSnap] = await Promise.all([
-        getDoc(doc(db, 'accounts', user.uid)),
+        getDoc(doc(db, 'accounts', targetCastId)),
         getDocs(
           query(
             collection(db, 'daily_metrics'),
-            where('cast_id', '==', user.uid),
+            where('cast_id', '==', targetCastId),
             orderBy('date', 'desc'),
             limit(14),
           ),
@@ -82,7 +82,7 @@ export default function HomePage() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [targetCastId])
 
   useEffect(() => {
     loadData()
@@ -165,26 +165,28 @@ export default function HomePage() {
         <p className="text-base font-medium" style={{ color: '#FFFFFF' }}>
           こんにちは、{account?.display_name ?? 'ゲスト'}さん
         </p>
-        <button
-          onClick={onManualFetch}
-          disabled={fetchLoading || cd > 0}
-          className="text-xs px-3 py-1.5 rounded-lg font-medium transition-opacity disabled:opacity-40"
-          style={{ backgroundColor: '#7C6FE0', color: '#FFFFFF', minHeight: '32px' }}
-        >
-          {fetchLoading ? (
-            <span className="flex items-center gap-1.5">
-              <span
-                className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"
-                style={{ display: 'inline-block' }}
-              />
-              更新中
-            </span>
-          ) : cd > 0 ? (
-            `${cd}秒後に再試行`
-          ) : (
-            '今すぐ更新'
-          )}
-        </button>
+        {!isViewingOther && (
+          <button
+            onClick={onManualFetch}
+            disabled={fetchLoading || cd > 0}
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-opacity disabled:opacity-40"
+            style={{ backgroundColor: '#7C6FE0', color: '#FFFFFF', minHeight: '32px' }}
+          >
+            {fetchLoading ? (
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"
+                  style={{ display: 'inline-block' }}
+                />
+                更新中
+              </span>
+            ) : cd > 0 ? (
+              `${cd}秒後に再試行`
+            ) : (
+              '今すぐ更新'
+            )}
+          </button>
+        )}
       </div>
 
       {fetchOk && (
