@@ -3,21 +3,63 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function signedIn() {
+      return request.auth != null;
+    }
+    function roleDoc() {
+      return get(/databases/$(database)/documents/roles/$(request.auth.uid)).data;
+    }
+    function hasRole() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/roles/$(request.auth.uid));
+    }
+    function isAdmin() {
+      return hasRole() && roleDoc().role == 'admin';
+    }
+    function managesStore(storeId) {
+      return hasRole()
+        && roleDoc().role == 'area_manager'
+        && storeId in roleDoc().managed_stores;
+    }
+
+    match /roles/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
     match /accounts/{userId} {
-      allow read: if request.auth != null
-        && request.auth.uid == userId;
+      allow read: if signedIn() && (
+        request.auth.uid == userId
+        || isAdmin()
+        || managesStore(resource.data.store_id)
+      );
       allow write: if false;
     }
 
     match /daily_metrics/{docId} {
-      allow read: if request.auth != null
-        && resource.data.cast_id == request.auth.uid;
+      allow read: if signedIn() && (
+        resource.data.cast_id == request.auth.uid
+        || isAdmin()
+        || managesStore(resource.data.store_id)
+      );
       allow write: if false;
     }
 
     match /post_hourly_metrics/{docId} {
-      allow read: if request.auth != null
-        && resource.data.cast_id == request.auth.uid;
+      allow read: if signedIn() && (
+        resource.data.cast_id == request.auth.uid
+        || isAdmin()
+        || managesStore(resource.data.store_id)
+      );
+      allow write: if false;
+    }
+
+    match /post_velocity/{docId} {
+      allow read: if signedIn() && (
+        resource.data.cast_id == request.auth.uid
+        || isAdmin()
+        || managesStore(resource.data.store_id)
+      );
       allow write: if false;
     }
 

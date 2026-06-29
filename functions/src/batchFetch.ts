@@ -267,6 +267,8 @@ export async function fetchAndStoreMetrics(
         {
           post_id: tweet.id,
           cast_id: accountId,
+          store_id: accountData.store_id ?? '',
+          org_id: accountData.org_id ?? '',
           posted_at: Timestamp.fromDate(postedAt),
           post_type: postType,
           has_media: (tweet.attachments?.media_keys?.length ?? 0) > 0,

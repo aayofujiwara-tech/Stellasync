@@ -109,10 +109,22 @@ export interface DailyMetrics {
 export interface PostVelocity {
   post_id: string
   cast_id: string
+  store_id?: string
+  org_id?: string
   posted_at: Timestamp
   post_type: 'original' | 'quote' | 'guest' | 'reply'
   has_media: boolean
   samples: Record<string, { imp: number; like: number; rt: number; at: Timestamp }>
+}
+
+/**
+ * roles/{uid}
+ * ロールベースアクセス制御用。admin / area_manager のみ明示登録。
+ * ドキュメントが存在しない uid は cast 扱い（自分のデータのみ閲覧可）。
+ */
+export interface Role {
+  role: 'cast' | 'area_manager' | 'admin'
+  managed_stores?: string[]  // area_manager のみ
 }
 
 /**
