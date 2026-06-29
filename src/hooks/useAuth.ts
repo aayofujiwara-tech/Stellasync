@@ -27,32 +27,49 @@ export function useAuth(): AuthState {
         return
       }
 
+      // ── accounts ──────────────────────────────────────────────────
+      let accountValid = false
       try {
         const accountSnap = await getDoc(doc(db, 'accounts', user.uid))
-
-        // X OAuth 未完了の匿名ユーザーは未認証として扱う
-        if (!accountSnap.exists() || !accountSnap.data().x_user_id) {
+        if (!accountSnap.exists()) {
+          console.warn('[useAuth] accounts getDoc: doc not found (uid=' + user.uid + ')')
           await signOut(auth)
           setState({ user: null, loading: false, role: 'cast', managedStores: [] })
           return
         }
+        if (!accountSnap.data().x_user_id) {
+          console.warn('[useAuth] accounts getDoc: x_user_id missing (uid=' + user.uid + ')')
+          await signOut(auth)
+          setState({ user: null, loading: false, role: 'cast', managedStores: [] })
+          return
+        }
+        accountValid = true
+      } catch (e) {
+        console.error('[useAuth] accounts getDoc FAILED:', e)
+      }
 
-        // roles/{uid} でロールを確認（存在しない UID は cast 扱い）
+      if (!accountValid) {
+        setState({ user, loading: false, role: 'cast', managedStores: [] })
+        return
+      }
+
+      // ── roles ──────────────────────────────────────────────────────
+      let role: UserRole = 'cast'
+      let managedStores: string[] = []
+      try {
         const roleSnap = await getDoc(doc(db, 'roles', user.uid))
-        let role: UserRole = 'cast'
-        let managedStores: string[] = []
-
-        if (roleSnap.exists()) {
+        if (!roleSnap.exists()) {
+          console.warn('[useAuth] roles getDoc: doc not found (uid=' + user.uid + ') → cast')
+        } else {
           const data = roleSnap.data()
           role = (data.role as UserRole) ?? 'cast'
           managedStores = Array.isArray(data.managed_stores) ? (data.managed_stores as string[]) : []
         }
-
-        setState({ user, loading: false, role, managedStores })
       } catch (e) {
-        console.error('[useAuth] role/account fetch failed:', e)
-        setState({ user, loading: false, role: 'cast', managedStores: [] })
+        console.error('[useAuth] roles getDoc FAILED:', e)
       }
+
+      setState({ user, loading: false, role, managedStores })
     })
 
     return unsubscribe

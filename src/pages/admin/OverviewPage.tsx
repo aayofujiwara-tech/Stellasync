@@ -55,23 +55,28 @@ function storeLabel(storeId: string, storeName?: string): string {
 }
 
 async function fetchStats(uid: string): Promise<CastStats> {
-  const snap = await getDocs(
-    query(
-      collection(db, 'daily_metrics'),
-      where('cast_id', '==', uid),
-      orderBy('date', 'desc'),
-      limit(7),
-    ),
-  )
-  let totalImp = 0, totalLikes = 0, totalRt = 0, totalPosts = 0
-  for (const d of snap.docs) {
-    const data = d.data() as DailyMetricDoc
-    totalImp   += data.impressions  ?? 0
-    totalLikes += data.likes        ?? 0
-    totalRt    += data.retweets     ?? 0
-    totalPosts += data.posts_count  ?? 0
+  try {
+    const snap = await getDocs(
+      query(
+        collection(db, 'daily_metrics'),
+        where('cast_id', '==', uid),
+        orderBy('date', 'desc'),
+        limit(7),
+      ),
+    )
+    let totalImp = 0, totalLikes = 0, totalRt = 0, totalPosts = 0
+    for (const d of snap.docs) {
+      const data = d.data() as DailyMetricDoc
+      totalImp   += data.impressions  ?? 0
+      totalLikes += data.likes        ?? 0
+      totalRt    += data.retweets     ?? 0
+      totalPosts += data.posts_count  ?? 0
+    }
+    return { totalImp, totalLikes, totalRt, totalPosts }
+  } catch (e) {
+    console.error('[OverviewPage] daily_metrics getDoc FAILED (cast_id=' + uid + '):', e)
+    return { totalImp: 0, totalLikes: 0, totalRt: 0, totalPosts: 0 }
   }
-  return { totalImp, totalLikes, totalRt, totalPosts }
 }
 
 export default function OverviewPage() {
@@ -88,16 +93,26 @@ export default function OverviewPage() {
         // アカウント取得（admin: 全件 / manager: 担当店舗のみ）
         let accountsSnap
         if (role === 'admin') {
-          accountsSnap = await getDocs(collection(db, 'accounts'))
+          try {
+            accountsSnap = await getDocs(collection(db, 'accounts'))
+          } catch (e) {
+            console.error('[OverviewPage] accounts 一覧取得 FAILED:', e)
+            throw e
+          }
         } else {
           if (managedStores.length === 0) {
             setGroups([])
             setLoading(false)
             return
           }
-          accountsSnap = await getDocs(
-            query(collection(db, 'accounts'), where('store_id', 'in', managedStores)),
-          )
+          try {
+            accountsSnap = await getDocs(
+              query(collection(db, 'accounts'), where('store_id', 'in', managedStores)),
+            )
+          } catch (e) {
+            console.error('[OverviewPage] accounts 担当店舗絞り込み取得 FAILED:', e)
+            throw e
+          }
         }
 
         const accounts: AccountDoc[] = accountsSnap.docs
