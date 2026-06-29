@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signInWithCustomToken } from 'firebase/auth'
+import { setPersistence, browserLocalPersistence, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 
 const CALLBACK_ENDPOINT = import.meta.env.VITE_AUTH_CALLBACK_URL
@@ -70,6 +70,7 @@ export default function AuthCallback() {
       }
 
       try {
+        await setPersistence(auth, browserLocalPersistence)
         await signInWithCustomToken(auth, data.customToken)
       } catch (signInErr) {
         console.error('[AuthCallback] signInWithCustomToken 失敗:', signInErr)
@@ -77,8 +78,14 @@ export default function AuthCallback() {
         return
       }
 
-      // フルリロードで onAuthStateChanged + Firestore 読み込みを確実に完了させる
-      window.location.href = '/'
+      // IndexedDB への永続化が確定するまで onAuthStateChanged でユーザーを待つ
+      await new Promise<void>((resolve) => {
+        const unsub = onAuthStateChanged(auth, (u) => {
+          if (u) { unsub(); resolve() }
+        })
+      })
+
+      navigate('/', { replace: true })
     }
 
     run()

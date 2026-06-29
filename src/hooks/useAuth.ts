@@ -49,8 +49,9 @@ export function useAuth(): AuthState {
         }
 
         setState({ user, loading: false, role, managedStores })
-      } catch {
-        setState({ user: null, loading: false, role: 'cast', managedStores: [] })
+      } catch (e) {
+        console.error('[useAuth] role/account fetch failed:', e)
+        setState({ user, loading: false, role: 'cast', managedStores: [] })
       }
     })
 
