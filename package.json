@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "seed": "ts-node --project tsconfig.scripts.json scripts/seedTestData.ts",
     "seed:admin": "ts-node --project tsconfig.scripts.json scripts/seedAdminRole.ts",
+    "seed:demo": "ts-node --project tsconfig.scripts.json scripts/seedDemoData.ts",
     "seed:store": "ts-node --project tsconfig.scripts.json scripts/seedTestStore.ts",
+    "teardown:demo": "ts-node --project tsconfig.scripts.json scripts/teardownDemoData.ts",
     "teardown:store": "ts-node --project tsconfig.scripts.json scripts/teardownTestStore.ts",
     "test:rules": "firebase emulators:exec --only firestore --project demo-test \"vitest run --config vitest.rules.config.ts\""
   },

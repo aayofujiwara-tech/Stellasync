@@ -7,7 +7,9 @@ dist/
 functions/lib/
 
 # Firebase Admin SDK credentials (絶対にコミットしない)
-*-adminsdk-*.json
+*adminsdk*.json
+*service-account*.json
+*serviceaccount*.json
 
 # TypeScript build info
 *.tsbuildinfo
@@ -15,4 +17,8 @@ functions/lib/
 # Firebase debug logs
 firestore-debug.log
 firebase-debug.log
+
+# CSV exports / temp scripts
+export/
+scripts/exportCsv.ts
 
