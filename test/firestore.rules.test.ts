@@ -319,3 +319,157 @@ describe('organizations/members（H-3 fix）', () => {
     ))
   })
 })
+
+// ─── RBAC セキュリティ - 攻撃ケース ─────────────────────────
+describe('RBAC セキュリティ - 攻撃ケース', () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      // ロール種データ
+      await setDoc(doc(db, 'roles/admin-1'),       { role: 'admin' })
+      await setDoc(doc(db, 'roles/mgr-mor'),        { role: 'area_manager', managed_stores: ['MORRIGAN'] })
+      await setDoc(doc(db, 'roles/mgr-empty'),      { role: 'area_manager', managed_stores: [] })
+      await setDoc(doc(db, 'roles/mgr-no-stores'),  { role: 'area_manager' })              // managed_stores フィールドなし
+      await setDoc(doc(db, 'roles/mgr-multi'),      { role: 'area_manager', managed_stores: ['MORRIGAN', 'VIPER'] })
+      // アカウント
+      await setDoc(doc(db, 'accounts/cast-mor'),    { store_id: 'MORRIGAN', display_name: 'カシス' })
+      await setDoc(doc(db, 'accounts/cast-vip'),    { store_id: 'VIPER',    display_name: 'ILL' })
+      // daily_metrics
+      await setDoc(doc(db, 'daily_metrics/dm-mor'),      { cast_id: 'cast-mor',   store_id: 'MORRIGAN', impressions: 100 })
+      await setDoc(doc(db, 'daily_metrics/dm-vip'),      { cast_id: 'cast-vip',   store_id: 'VIPER',    impressions: 100 })
+      await setDoc(doc(db, 'daily_metrics/dm-no-store'), { cast_id: 'other-cast', impressions: 50 })     // store_id フィールドなし
+      await setDoc(doc(db, 'daily_metrics/dm-sakyu'),    { cast_id: 'cast-sakyu', store_id: '電脳サキュバス', impressions: 200 })
+      // post_hourly_metrics / post_velocity
+      await setDoc(doc(db, 'post_hourly_metrics/phm-mor'), { cast_id: 'cast-mor', store_id: 'MORRIGAN', imp_cumulative: 50 })
+      await setDoc(doc(db, 'post_velocity/pv-mor'),         { cast_id: 'cast-mor', store_id: 'MORRIGAN', samples: {} })
+      // account_tokens / notifications / stores / oauth_sessions
+      await setDoc(doc(db, 'account_tokens/cast-mor'),     { access_token: 'encrypted' })
+      await setDoc(doc(db, 'notifications/notif-mor'),      { recipient_id: 'cast-mor', message: 'test' })
+      await setDoc(doc(db, 'stores/store-1'),               { name: 'Test Store' })
+      await setDoc(doc(db, 'oauth_sessions/session-1'),     { uid: 'cast-mor' })
+    })
+  })
+
+  // ── 【権限昇格の防止】 ──────────────────────────────────
+  it('1: cast が roles を書き込んで admin になれない', async () => {
+    const db = env.authenticatedContext('attacker').firestore()
+    await assertFails(setDoc(doc(db, 'roles/attacker'), { role: 'admin' }))
+  })
+
+  it('2: cast が roles に area_manager+全店舗を書き込めない', async () => {
+    const db = env.authenticatedContext('attacker').firestore()
+    await assertFails(setDoc(doc(db, 'roles/attacker'), {
+      role: 'area_manager',
+      managed_stores: ['MORRIGAN', 'VIPER', '電脳サキュバス'],
+    }))
+  })
+
+  it('3: area_manager が自分の managed_stores を書き換えられない', async () => {
+    const db = env.authenticatedContext('mgr-mor').firestore()
+    await assertFails(setDoc(doc(db, 'roles/mgr-mor'), {
+      role: 'area_manager',
+      managed_stores: ['MORRIGAN', 'VIPER'],
+    }))
+  })
+
+  // ── 【area_manager の境界】 ──────────────────────────────
+  it('4: managed_stores:[] の area_manager はどの店舗も読めない（フェイルセーフ）', async () => {
+    const db = env.authenticatedContext('mgr-empty').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-mor')))
+  })
+
+  it('5: managed_stores フィールド未定義の area_manager は読めない', async () => {
+    const db = env.authenticatedContext('mgr-no-stores').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-mor')))
+  })
+
+  it('6a: managed_stores:["MORRIGAN","VIPER"] の area_manager は MORRIGAN を読める', async () => {
+    const db = env.authenticatedContext('mgr-multi').firestore()
+    await assertSucceeds(getDoc(doc(db, 'daily_metrics/dm-mor')))
+  })
+
+  it('6b: managed_stores:["MORRIGAN","VIPER"] の area_manager は VIPER を読める', async () => {
+    const db = env.authenticatedContext('mgr-multi').firestore()
+    await assertSucceeds(getDoc(doc(db, 'daily_metrics/dm-vip')))
+  })
+
+  it('6c: managed_stores:["MORRIGAN","VIPER"] の area_manager は担当外（電脳サキュバス）を読めない', async () => {
+    const db = env.authenticatedContext('mgr-multi').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-sakyu')))
+  })
+
+  it('7: store_id が欠落した daily_metrics を area_manager は読めない', async () => {
+    const db = env.authenticatedContext('mgr-mor').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-no-store')))
+  })
+
+  // ── 【cast のなりすまし・回避】 ────────────────────────
+  it('8: cast が他人の cast_id の daily_metrics を読めない', async () => {
+    const db = env.authenticatedContext('cast-mor').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-vip')))
+  })
+
+  it('9: roles 未登録 cast が他店舗の daily_metrics を読めない', async () => {
+    const db = env.authenticatedContext('unknown-cast').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-mor')))
+  })
+
+  it('10: 認証あり・roles なし・cast_id 不一致・store_id 不一致の三重外れ', async () => {
+    const db = env.authenticatedContext('nobody').firestore()
+    await assertFails(getDoc(doc(db, 'daily_metrics/dm-mor')))
+  })
+
+  // ── 【admin の範囲と限界】 ──────────────────────────────
+  it('11a: admin は全キャストの daily_metrics を読める', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertSucceeds(getDoc(doc(db, 'daily_metrics/dm-mor')))
+    await assertSucceeds(getDoc(doc(db, 'daily_metrics/dm-vip')))
+  })
+
+  it('11b: admin は全キャストの post_hourly_metrics を読める', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertSucceeds(getDoc(doc(db, 'post_hourly_metrics/phm-mor')))
+  })
+
+  it('11c: admin は全キャストの post_velocity を読める', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertSucceeds(getDoc(doc(db, 'post_velocity/pv-mor')))
+  })
+
+  it('11d: admin は全キャストの accounts を読める', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertSucceeds(getDoc(doc(db, 'accounts/cast-mor')))
+    await assertSucceeds(getDoc(doc(db, 'accounts/cast-vip')))
+  })
+
+  it('12: admin でも account_tokens は読めない（最重要）', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertFails(getDoc(doc(db, 'account_tokens/cast-mor')))
+  })
+
+  it('13: admin でも roles への書き込みはできない（自己昇格経路なし）', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertFails(setDoc(doc(db, 'roles/attacker'), { role: 'admin' }))
+  })
+
+  it('14a: admin でも stores は読めない', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertFails(getDoc(doc(db, 'stores/store-1')))
+  })
+
+  it('14b: admin でも oauth_sessions は読めない', async () => {
+    const db = env.authenticatedContext('admin-1').firestore()
+    await assertFails(getDoc(doc(db, 'oauth_sessions/session-1')))
+  })
+
+  // ── 【notifications 等の回帰】 ───────────────────────────
+  it('15a: notifications は recipient_id 本人のみ読める', async () => {
+    const db = env.authenticatedContext('cast-mor').firestore()
+    await assertSucceeds(getDoc(doc(db, 'notifications/notif-mor')))
+  })
+
+  it('15b: notifications は他人には読めない', async () => {
+    const db = env.authenticatedContext('cast-vip').firestore()
+    await assertFails(getDoc(doc(db, 'notifications/notif-mor')))
+  })
+})
