@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { Home, FileText, BarChart2, Settings } from 'lucide-react'
 
@@ -16,14 +16,9 @@ export default function CastLayout() {
 
   useEffect(() => {
     if (loading) return
-    if (!user) {
-      navigate('/login', { replace: true })
-    } else if (role === 'admin') {
-      navigate('/admin', { replace: true })
-    } else if (role === 'area_manager') {
-      navigate('/manager', { replace: true })
-    }
-  }, [user, loading, role, navigate])
+    if (!user) navigate('/login', { replace: true })
+    // admin/area_manager は /cast に留まれる（管理者が自分のキャスト画面を閲覧するケース）
+  }, [user, loading, navigate])
 
   if (loading) {
     return (
@@ -40,8 +35,17 @@ export default function CastLayout() {
 
   return (
     <div className="flex flex-col min-h-screen max-w-[430px] mx-auto" style={{ backgroundColor: '#0F0F14' }}>
-      <header className="flex items-center px-4 py-3 border-b" style={{ borderColor: '#1A1A24' }}>
+      <header className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#1A1A24' }}>
         <h1 className="text-lg font-bold" style={{ color: '#7C6FE0' }}>Stellasync</h1>
+        {(role === 'admin' || role === 'area_manager') && (
+          <Link
+            to={role === 'admin' ? '/admin' : '/manager'}
+            className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+            style={{ color: '#A0A0B0', backgroundColor: '#1A1A24' }}
+          >
+            管理者ビューへ
+          </Link>
+        )}
       </header>
 
       <main className="flex-1 overflow-y-auto pb-20">
