@@ -11,6 +11,8 @@ import PostsPage from './pages/cast/PostsPage'
 import GraphPage from './pages/cast/GraphPage'
 import SettingsPage from './pages/cast/SettingsPage'
 import OverviewPage from './pages/admin/OverviewPage'
+import RankingPage from './pages/cast/RankingPage'
+import RankingOverviewPage from './pages/admin/RankingOverviewPage'
 
 function RootRedirect() {
   const { user, loading, role } = useAuth()
@@ -55,25 +57,29 @@ export default function App() {
           <Route path="home"     element={<HomePage />} />
           <Route path="posts"    element={<PostsPage />} />
           <Route path="graph"    element={<GraphPage />} />
+          <Route path="ranking"  element={<RankingPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
         {/* 管理者画面（role: admin） */}
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<OverviewPage />} />
+          <Route path="ranking" element={<RankingOverviewPage />} />
         </Route>
 
         {/* エリアマネージャー画面（role: area_manager） */}
         <Route path="/manager" element={<ManagerLayout />}>
           <Route index element={<OverviewPage />} />
+          <Route path="ranking" element={<RankingOverviewPage />} />
         </Route>
 
         {/* 詳細ビュー（admin/manager が指定キャストを閲覧） */}
         <Route path="/detail/cast/:castId" element={<CastDetailLayout />}>
           <Route index element={<Navigate to="home" replace />} />
-          <Route path="home"  element={<HomePage />} />
-          <Route path="posts" element={<PostsPage />} />
-          <Route path="graph" element={<GraphPage />} />
+          <Route path="home"    element={<HomePage />} />
+          <Route path="posts"   element={<PostsPage />} />
+          <Route path="graph"   element={<GraphPage />} />
+          <Route path="ranking" element={<RankingPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

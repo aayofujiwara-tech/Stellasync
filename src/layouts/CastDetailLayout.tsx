@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useParams, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { db } from '../lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
-import { Home, FileText, BarChart2, ArrowLeft } from 'lucide-react'
+import { Home, FileText, BarChart2, Trophy, ArrowLeft } from 'lucide-react'
 
 export default function CastDetailLayout() {
   const { user, loading, role } = useAuth()
@@ -47,9 +47,10 @@ export default function CastDetailLayout() {
   const backTo = role === 'admin' ? '/admin' : '/manager'
 
   const tabs = [
-    { to: `/detail/cast/${castId}/home`,  icon: Home,     label: 'ホーム' },
-    { to: `/detail/cast/${castId}/posts`, icon: FileText,  label: '投稿' },
-    { to: `/detail/cast/${castId}/graph`, icon: BarChart2, label: 'グラフ' },
+    { to: `/detail/cast/${castId}/home`,    icon: Home,     label: 'ホーム' },
+    { to: `/detail/cast/${castId}/posts`,   icon: FileText,  label: '投稿' },
+    { to: `/detail/cast/${castId}/graph`,   icon: BarChart2, label: 'グラフ' },
+    { to: `/detail/cast/${castId}/ranking`, icon: Trophy,    label: 'ランキング' },
   ] as const
 
   return (

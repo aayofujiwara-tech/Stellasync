@@ -1,43 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useTargetCastId } from '../../hooks/useTargetCastId'
 import { db } from '../../lib/firebase'
-import {
-  collection, query, where, getDocs, type Timestamp,
-} from 'firebase/firestore'
+import { collection, query, where, getDocs } from 'firebase/firestore'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { Image } from 'lucide-react'
-
-type PostType = 'original' | 'quote' | 'guest' | 'reply'
-
-interface HourlyMetric {
-  post_id: string
-  hour_offset: number
-  imp_cumulative: number
-  like_cumulative: number
-  rt_cumulative: number
-  posted_at: Timestamp | null
-  has_media: boolean
-  media_url?: string | null
-  text: string
-  post_type?: PostType
-}
+import {
+  type PostType, type HourlyMetric, type PostGroup,
+  groupByPost, TYPE_META,
+} from '../../lib/posts'
 
 type MetricKey = 'imp_cumulative' | 'like_cumulative' | 'rt_cumulative'
-
-interface PostGroup {
-  post_id: string
-  posted_at: Timestamp | null
-  has_media: boolean
-  latest_imp: number
-  latest_like: number
-  latest_rt: number
-  hours: HourlyMetric[]
-  text: string
-  media_url: string | null
-  post_type: PostType
-}
 
 const metricLabels: Record<MetricKey, string> = {
   imp_cumulative:  'IMP',
@@ -45,42 +19,13 @@ const metricLabels: Record<MetricKey, string> = {
   rt_cumulative:   'RT',
 }
 
-const TYPE_META: Record<PostType, { label: string; bg: string; fg: string }> = {
-  original: { label: '通常',     bg: '#1A1A24', fg: '#A0A0B0' },
-  quote:    { label: '引用',     bg: '#11243A', fg: '#85B7EB' },
-  guest:    { label: 'ゲスト',   bg: '#211C3A', fg: '#AFA9EC' },
-  reply:    { label: 'リプライ', bg: '#2A2A2E', fg: '#888780' },
-}
-
-function groupByPost(metrics: HourlyMetric[]): PostGroup[] {
-  const map = new Map<string, HourlyMetric[]>()
-  for (const m of metrics) {
-    if (!map.has(m.post_id)) map.set(m.post_id, [])
-    map.get(m.post_id)!.push(m)
-  }
-
-  return Array.from(map.entries())
-    .map(([post_id, hours]) => {
-      const sorted = [...hours].sort((a, b) => b.hour_offset - a.hour_offset)
-      const latest = sorted[0]
-      return {
-        post_id,
-        posted_at:   latest.posted_at ?? null,
-        has_media:   latest.has_media,
-        latest_imp:  latest.imp_cumulative,
-        latest_like: latest.like_cumulative,
-        latest_rt:   latest.rt_cumulative,
-        hours:       hours.sort((a, b) => a.hour_offset - b.hour_offset),
-        text:        latest.text ?? '',
-        media_url:   latest.media_url ?? null,
-        post_type:   latest.post_type ?? 'original',
-      }
-    })
-    .sort((a, b) => {
-      const aMs = a.posted_at?.toMillis() ?? 0
-      const bMs = b.posted_at?.toMillis() ?? 0
-      return bMs - aMs
-    })
+const FILTER_ORDER: Array<'all' | PostType> = ['all', 'original', 'quote', 'guest', 'reply']
+const FILTER_LABELS: Record<'all' | PostType, string> = {
+  all:      'すべて',
+  original: '通常',
+  quote:    '引用',
+  guest:    'ゲスト',
+  reply:    'リプライ',
 }
 
 function PostCard({ post }: { post: PostGroup }) {
@@ -221,15 +166,6 @@ function PostCard({ post }: { post: PostGroup }) {
   )
 }
 
-const FILTER_ORDER: Array<'all' | PostType> = ['all', 'original', 'quote', 'guest', 'reply']
-const FILTER_LABELS: Record<'all' | PostType, string> = {
-  all:      'すべて',
-  original: '通常',
-  quote:    '引用',
-  guest:    'ゲスト',
-  reply:    'リプライ',
-}
-
 export default function PostsPage() {
   const { targetCastId } = useTargetCastId()
   const [posts, setPosts] = useState<PostGroup[]>([])
@@ -282,7 +218,6 @@ export default function PostsPage() {
 
   return (
     <div className="py-6 space-y-3">
-      {/* フィルタチップ */}
       <div className="flex gap-2 px-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
         {FILTER_ORDER.map((f) => (
           <button

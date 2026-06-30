@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet, useNavigate, Link } from 'react-router-dom'
+import { Outlet, useNavigate, Link, NavLink } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
@@ -63,6 +63,32 @@ export default function AdminLayout() {
           </button>
         </div>
       </header>
+      <nav
+        className="flex gap-2 px-5 py-2 border-b"
+        style={{ backgroundColor: '#0F0F14', borderColor: '#1A1A24' }}
+      >
+        <NavLink
+          to="/admin"
+          end
+          className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+          style={({ isActive }) => ({
+            color: isActive ? '#7C6FE0' : '#A0A0B0',
+            backgroundColor: isActive ? '#1E1A3A' : '#1A1A24',
+          })}
+        >
+          概要
+        </NavLink>
+        <NavLink
+          to="/admin/ranking"
+          className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+          style={({ isActive }) => ({
+            color: isActive ? '#7C6FE0' : '#A0A0B0',
+            backgroundColor: isActive ? '#1E1A3A' : '#1A1A24',
+          })}
+        >
+          全体ランキング
+        </NavLink>
+      </nav>
       <main>
         <Outlet />
       </main>

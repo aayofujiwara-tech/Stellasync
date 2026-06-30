@@ -1,12 +1,13 @@
 import { useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { Home, FileText, BarChart2, Settings } from 'lucide-react'
+import { Home, FileText, BarChart2, Trophy, Settings } from 'lucide-react'
 
 const tabs = [
   { to: '/cast/home',     icon: Home,      label: 'ホーム' },
   { to: '/cast/posts',    icon: FileText,   label: '投稿' },
   { to: '/cast/graph',    icon: BarChart2,  label: 'グラフ' },
+  { to: '/cast/ranking',  icon: Trophy,     label: 'ランキング' },
   { to: '/cast/settings', icon: Settings,   label: '設定' },
 ] as const
 
