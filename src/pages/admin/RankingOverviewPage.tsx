@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { type HourlyMetric, type PostGroup, groupByPost, TYPE_META } from '../../lib/posts'
 import { engagementScore, engagementRate } from '../../lib/engagement'
 import { Trophy } from 'lucide-react'
+import VelocityModal from '../../components/VelocityModal'
 
 type SortAxis = 'imp' | 'score' | 'rate'
 
@@ -67,7 +68,14 @@ async function fetchPostsForCast(uid: string): Promise<PostGroup[]> {
   )
 }
 
-function RankedRow({ post, rank, axis }: { post: RankedPost; rank: number; axis: SortAxis }) {
+function RankedRow({
+  post, rank, axis, onClick,
+}: {
+  post: RankedPost
+  rank: number
+  axis: SortAxis
+  onClick: () => void
+}) {
   const score = engagementScore(post.latest_like, post.latest_rt)
   const rate  = engagementRate(post.latest_like, post.latest_rt, post.latest_imp)
   const meta  = TYPE_META[post.post_type]
@@ -78,7 +86,14 @@ function RankedRow({ post, rank, axis }: { post: RankedPost; rank: number; axis:
       : { color: '#C0C0D0' }
 
   return (
-    <div className="px-4 py-3 border-b last:border-0" style={{ borderColor: '#2A2A3C' }}>
+    <div
+      className="px-4 py-3 border-b last:border-0 cursor-pointer transition-colors"
+      style={{ borderColor: '#2A2A3C' }}
+      onClick={onClick}
+      role="button"
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(124,111,224,0.06)' }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '' }}
+    >
       <div className="flex items-start gap-3">
         <div
           className="text-sm font-bold tabular-nums w-7 shrink-0 pt-0.5 text-center"
@@ -145,6 +160,7 @@ function RankedRow({ post, rank, axis }: { post: RankedPost; rank: number; axis:
               <span style={highlight('rate')}>{(rate * 100).toFixed(2)}%</span>
             </span>
           </div>
+          <p className="text-xs mt-1.5" style={{ color: '#7C6FE0' }}>↗ クリックで初速を見る</p>
         </div>
       </div>
     </div>
@@ -153,10 +169,11 @@ function RankedRow({ post, rank, axis }: { post: RankedPost; rank: number; axis:
 
 export default function RankingOverviewPage() {
   const { role, managedStores } = useAuth()
-  const [allPosts, setAllPosts] = useState<RankedPost[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState<string | null>(null)
-  const [axis, setAxis]         = useState<SortAxis>('imp')
+  const [allPosts, setAllPosts]     = useState<RankedPost[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState<string | null>(null)
+  const [axis, setAxis]             = useState<SortAxis>('imp')
+  const [selectedPost, setSelected] = useState<PostGroup | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -247,47 +264,59 @@ export default function RankingOverviewPage() {
   }
 
   return (
-    <div className="px-4 py-5 max-w-4xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <Trophy size={18} style={{ color: '#7C6FE0' }} />
-        <h2 className="text-base font-bold" style={{ color: '#E0E0EE' }}>
-          {headerLabel}
-        </h2>
-        <span className="text-xs" style={{ color: '#A0A0B0' }}>
-          直近7日・リプライ除外・TOP{TOP_N}
-        </span>
-      </div>
-
-      <div className="flex gap-2 mb-4">
-        {AXIS_TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setAxis(key)}
-            className="text-xs px-4 py-1.5 rounded-full font-medium transition-colors"
-            style={{
-              backgroundColor: axis === key ? '#7C6FE0' : '#1A1A24',
-              color:           axis === key ? '#FFFFFF'  : '#A0A0B0',
-              minHeight: '32px',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {ranked.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
-          <p className="text-sm" style={{ color: '#A0A0B0' }}>
-            対象期間の投稿がありません
-          </p>
+    <>
+      <div className="px-4 py-5 max-w-4xl mx-auto">
+        <div className="flex items-center gap-2 mb-4">
+          <Trophy size={18} style={{ color: '#7C6FE0' }} />
+          <h2 className="text-base font-bold" style={{ color: '#E0E0EE' }}>
+            {headerLabel}
+          </h2>
+          <span className="text-xs" style={{ color: '#A0A0B0' }}>
+            直近7日・リプライ除外・TOP{TOP_N}
+          </span>
         </div>
-      ) : (
-        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1A1A24' }}>
-          {ranked.map((post, i) => (
-            <RankedRow key={`${post.castId}-${post.post_id}`} post={post} rank={i + 1} axis={axis} />
+
+        <div className="flex gap-2 mb-4">
+          {AXIS_TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setAxis(key)}
+              className="text-xs px-4 py-1.5 rounded-full font-medium transition-colors"
+              style={{
+                backgroundColor: axis === key ? '#7C6FE0' : '#1A1A24',
+                color:           axis === key ? '#FFFFFF'  : '#A0A0B0',
+                minHeight: '32px',
+              }}
+            >
+              {label}
+            </button>
           ))}
         </div>
+
+        {ranked.length === 0 ? (
+          <div className="flex items-center justify-center py-16">
+            <p className="text-sm" style={{ color: '#A0A0B0' }}>
+              対象期間の投稿がありません
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1A1A24' }}>
+            {ranked.map((post, i) => (
+              <RankedRow
+                key={`${post.castId}-${post.post_id}`}
+                post={post}
+                rank={i + 1}
+                axis={axis}
+                onClick={() => setSelected(post)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedPost !== null && (
+        <VelocityModal post={selectedPost} onClose={() => setSelected(null)} />
       )}
-    </div>
+    </>
   )
 }
