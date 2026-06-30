@@ -21,7 +21,7 @@ const CORS_ORIGINS = [
   'http://localhost:5173',
   /^https:\/\/[a-z0-9-]+\.stellasync\.pages\.dev$/,  // Cloudflare Pages プレビュー URL
 ]
-const X_AUTH_URL = 'https://twitter.com/i/oauth2/authorize'
+const X_AUTH_URL = 'https://x.com/i/oauth2/authorize'
 const X_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token'
 const X_USER_ME_URL = 'https://api.twitter.com/2/users/me'
 const SESSION_TTL_MS = 10 * 60 * 1000 // 10分
@@ -185,7 +185,7 @@ export const authXCallback = onRequest(
     const tokenData = (await tokenRes.json()) as TokenResponse
 
     // X ユーザー情報を取得
-    const userRes = await fetch(`${X_USER_ME_URL}?user.fields=name`, {
+    const userRes = await fetch(`${X_USER_ME_URL}?user.fields=name,username`, {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     })
 
@@ -194,7 +194,7 @@ export const authXCallback = onRequest(
       return
     }
 
-    const userData = (await userRes.json()) as { data: { id: string; name: string } }
+    const userData = (await userRes.json()) as { data: { id: string; name: string; username: string } }
 
     // X user_id から Firebase Auth UID を確定（例: x_2956697281）
     const uid = `x_${userData.data.id}`
@@ -219,6 +219,7 @@ export const authXCallback = onRequest(
       {
         x_user_id: userData.data.id,
         display_name: userData.data.name,
+        username: userData.data.username,
         is_active: true,
         token_expires_at: tokenExpiresAt,
         token_status: 'valid',
@@ -240,7 +241,7 @@ export const authXCallback = onRequest(
     // カスタムトークンを生成してクライアントに返す
     const customToken = await getAuth().createCustomToken(uid)
 
-    res.json({ success: true, customToken })
+    res.json({ success: true, customToken, displayName: userData.data.name, username: userData.data.username })
   }
 )
 

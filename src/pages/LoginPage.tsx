@@ -52,6 +52,14 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* アカウント確認注意書き */}
+        <div className="w-full rounded-xl px-4 py-3 text-left" style={{ backgroundColor: '#1A1A24' }}>
+          <p className="text-xs font-semibold mb-1" style={{ color: '#D4A017' }}>⚠️ 連携前にご確認ください</p>
+          <p className="text-xs" style={{ color: '#A0A0B0' }}>
+            お店用のXアカウントでログイン中か確認してください。複数アカウントをお持ちの方は、Xアプリでお店用アカウントに切り替えてからボタンをタップしてください。
+          </p>
+        </div>
+
         {/* サインインボタン */}
         <button
           onClick={handleXLogin}

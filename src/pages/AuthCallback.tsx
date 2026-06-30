@@ -1,43 +1,48 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { setPersistence, browserLocalPersistence, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth'
+import {
+  setPersistence,
+  browserLocalPersistence,
+  signInWithCustomToken,
+  onAuthStateChanged,
+  signOut,
+} from 'firebase/auth'
 import { auth } from '../lib/firebase'
 
 const CALLBACK_ENDPOINT = import.meta.env.VITE_AUTH_CALLBACK_URL
 const OAUTH_SECRET_KEY  = 'stellasync_oauth_secret'
 
+type Phase =
+  | { kind: 'processing' }
+  | { kind: 'confirm'; displayName: string; username: string }
+  | { kind: 'reauth' }
+  | { kind: 'error'; message: string }
+
+const BG: CSSProperties = { backgroundColor: '#0F0F14' }
+
 export default function AuthCallback() {
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+  const [phase, setPhase]         = useState<Phase>({ kind: 'processing' })
+  const [reLaunching, setRelaunch] = useState(false)
 
   useEffect(() => {
     const run = async () => {
-      console.log('[AuthCallback] 開始 URL:', window.location.href)
-
       const params = new URLSearchParams(window.location.search)
       const code  = params.get('code')
       const state = params.get('state')
 
-      console.log('[AuthCallback] code:', code ? `${code.slice(0, 10)}...` : 'なし')
-      console.log('[AuthCallback] state:', state ? `${state.slice(0, 10)}...` : 'なし')
-
       if (!code || !state) {
-        console.error('[AuthCallback] code/state が取得できなかった:', window.location.search)
-        setError('認証パラメータが不正です。')
+        setPhase({ kind: 'error', message: '認証パラメータが不正です。' })
         return
       }
 
-      // Login CSRF 対策: localStorage から sessionSecret を取り出す（使い捨て）
       const sessionSecret = localStorage.getItem(OAUTH_SECRET_KEY)
       localStorage.removeItem(OAUTH_SECRET_KEY)
 
       if (!sessionSecret) {
-        console.error('[AuthCallback] sessionSecret が localStorage にない — CSRF の可能性')
-        setError('認証セッションが無効です。もう一度サインインしてください。')
+        setPhase({ kind: 'error', message: '認証セッションが無効です。もう一度サインインしてください。' })
         return
       }
-
-      console.log('[AuthCallback] エンドポイントにリクエスト送信:', CALLBACK_ENDPOINT)
 
       let res: Response
       try {
@@ -46,62 +51,99 @@ export default function AuthCallback() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code, state, session_secret: sessionSecret }),
         })
-      } catch (fetchErr) {
-        console.error('[AuthCallback] fetch 失敗（CORS or ネットワーク）:', fetchErr)
-        setError('サーバーへの接続に失敗しました。もう一度お試しください。')
+      } catch (err) {
+        console.error('[AuthCallback] fetch 失敗:', err)
+        setPhase({ kind: 'error', message: 'サーバーへの接続に失敗しました。もう一度お試しください。' })
         return
       }
-
-      console.log('[AuthCallback] レスポンス status:', res.status)
 
       if (!res.ok) {
         const body = await res.text()
         console.error('[AuthCallback] エラーレスポンス:', res.status, body)
-        setError('認証に失敗しました。もう一度お試しください。')
+        setPhase({ kind: 'error', message: '認証に失敗しました。もう一度お試しください。' })
         return
       }
 
-      const data = (await res.json()) as { success: boolean; customToken?: string }
-      console.log('[AuthCallback] 成功')
+      const data = (await res.json()) as {
+        success: boolean
+        customToken?: string
+        displayName?: string
+        username?: string
+      }
 
       if (!data.customToken) {
-        setError('認証トークンが取得できませんでした。もう一度お試しください。')
+        setPhase({ kind: 'error', message: '認証トークンが取得できませんでした。もう一度お試しください。' })
         return
       }
 
       try {
         await setPersistence(auth, browserLocalPersistence)
         await signInWithCustomToken(auth, data.customToken)
-      } catch (signInErr) {
-        console.error('[AuthCallback] signInWithCustomToken 失敗:', signInErr)
-        setError('サインインに失敗しました。もう一度お試しください。')
+      } catch (err) {
+        console.error('[AuthCallback] signInWithCustomToken 失敗:', err)
+        setPhase({ kind: 'error', message: 'サインインに失敗しました。もう一度お試しください。' })
         return
       }
 
-      // IndexedDB への永続化が確定するまで onAuthStateChanged でユーザーを待つ
       await new Promise<void>((resolve) => {
         const unsub = onAuthStateChanged(auth, (u) => {
           if (u) { unsub(); resolve() }
         })
       })
 
-      navigate('/', { replace: true })
+      setPhase({
+        kind: 'confirm',
+        displayName: data.displayName ?? '',
+        username:    data.username    ?? '',
+      })
     }
 
     run()
   }, [navigate])
 
-  if (error) {
+  const handleReauth = async () => {
+    setRelaunch(true)
+    await signOut(auth)
+    try {
+      const res = await fetch(import.meta.env.VITE_AUTH_REDIRECT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!res.ok) throw new Error('redirect failed')
+      const { redirectUrl, sessionSecret } = (await res.json()) as {
+        redirectUrl: string
+        sessionSecret: string
+      }
+      localStorage.setItem(OAUTH_SECRET_KEY, sessionSecret)
+      window.location.href = redirectUrl
+    } catch {
+      setRelaunch(false)
+      navigate('/login', { replace: true })
+    }
+  }
+
+  if (phase.kind === 'processing') {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center px-4"
-        style={{ backgroundColor: '#0F0F14' }}
-      >
-        <div className="w-full max-w-[375px] flex flex-col items-center gap-4 text-center">
-          <p className="text-sm font-medium" style={{ color: '#D85A30' }}>{error}</p>
+      <div className="min-h-screen flex items-center justify-center px-4" style={BG}>
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-8 h-8 border-2 rounded-full animate-spin"
+            style={{ borderColor: '#7C6FE0', borderTopColor: 'transparent' }}
+          />
+          <p className="text-sm" style={{ color: '#A0A0B0' }}>認証処理中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase.kind === 'error') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={BG}>
+        <div className="w-full max-w-[375px] flex flex-col items-center gap-5 text-center">
+          <p className="text-sm font-medium" style={{ color: '#D85A30' }}>{phase.message}</p>
           <button
             onClick={() => navigate('/login', { replace: true })}
-            className="px-6 py-3 rounded-xl font-semibold"
+            className="w-full py-3 rounded-xl font-semibold"
             style={{ backgroundColor: '#7C6FE0', color: '#FFFFFF', minHeight: '44px' }}
           >
             ログインに戻る
@@ -111,17 +153,86 @@ export default function AuthCallback() {
     )
   }
 
+  if (phase.kind === 'confirm') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={BG}>
+        <div className="w-full max-w-[375px] flex flex-col items-center gap-5 text-center">
+          <p className="text-sm" style={{ color: '#A0A0B0' }}>
+            以下のXアカウントで連携しました
+          </p>
+
+          <div className="w-full rounded-2xl px-5 py-4" style={{ backgroundColor: '#1A1A24' }}>
+            <p className="text-2xl font-bold mb-1 break-all" style={{ color: '#7C6FE0' }}>
+              @{phase.username || '—'}
+            </p>
+            <p className="text-sm" style={{ color: '#C0C0D0' }}>
+              {phase.displayName || '—'}
+            </p>
+          </div>
+
+          <p className="text-sm" style={{ color: '#E0E0EE' }}>
+            お店用アカウントで合っていますか？
+          </p>
+
+          <button
+            onClick={() => navigate('/', { replace: true })}
+            className="w-full py-3 rounded-xl font-semibold"
+            style={{ backgroundColor: '#7C6FE0', color: '#FFFFFF', minHeight: '44px' }}
+          >
+            はい、続ける
+          </button>
+
+          <button
+            onClick={async () => {
+              await signOut(auth)
+              setPhase({ kind: 'reauth' })
+            }}
+            className="w-full py-3 rounded-xl font-semibold"
+            style={{ backgroundColor: '#2A2A3C', color: '#E0E0EE', minHeight: '44px' }}
+          >
+            違う、別のアカウントでやり直す
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // reauth
   return (
-    <div
-      className="min-h-screen flex items-center justify-center"
-      style={{ backgroundColor: '#0F0F14' }}
-    >
-      <div className="flex flex-col items-center gap-4">
-        <div
-          className="w-8 h-8 border-2 rounded-full animate-spin"
-          style={{ borderColor: '#7C6FE0', borderTopColor: 'transparent' }}
-        />
-        <p className="text-sm" style={{ color: '#A0A0B0' }}>認証処理中...</p>
+    <div className="min-h-screen flex items-center justify-center px-4" style={BG}>
+      <div className="w-full max-w-[375px] flex flex-col items-center gap-5 text-center">
+        <p className="text-sm font-medium" style={{ color: '#E0E0EE' }}>
+          アカウントを切り替えてから再連携してください
+        </p>
+
+        <div className="w-full rounded-2xl px-5 py-4 text-left" style={{ backgroundColor: '#1A1A24' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: '#D4A017' }}>
+            切替手順
+          </p>
+          <ol className="text-xs space-y-1.5 list-decimal list-inside" style={{ color: '#C0C0D0' }}>
+            <li>XアプリまたはX.comを開く</li>
+            <li>右上のアイコンからお店用アカウントに切り替える</li>
+            <li>切り替えたら下のボタンをタップ</li>
+          </ol>
+        </div>
+
+        <button
+          onClick={handleReauth}
+          disabled={reLaunching}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold disabled:opacity-60"
+          style={{ backgroundColor: '#FFFFFF', color: '#000000', minHeight: '44px' }}
+        >
+          {reLaunching ? (
+            <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-black">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              お店用アカウントで再度連携する
+            </>
+          )}
+        </button>
       </div>
     </div>
   )
