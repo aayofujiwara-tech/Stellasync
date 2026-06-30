@@ -3,18 +3,30 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { type PostGroup, TYPE_META } from '../lib/posts'
+import { type PostGroup, type HourlyMetric, TYPE_META } from '../lib/posts'
 import {
   fetchPostVelocity, velocityDeltas,
   type PostVelocityData,
 } from '../lib/velocity'
 
-type MetricKey = 'imp' | 'like' | 'rt'
+/* ---- 型 ---- */
 
-const METRIC_LABELS: Record<MetricKey, string> = {
+type TabKey = 'velocity' | 'growth'
+
+// 初速タブ用: post_velocity の生値キー
+type VelocityMetricKey = 'imp' | 'like' | 'rt'
+const VELOCITY_METRIC_LABELS: Record<VelocityMetricKey, string> = {
   imp:  'IMP',
   like: 'いいね',
   rt:   'RT',
+}
+
+// 伸び全体タブ用: post_hourly_metrics の累積値キー
+type GrowthMetricKey = 'imp_cumulative' | 'like_cumulative' | 'rt_cumulative'
+const GROWTH_METRIC_LABELS: Record<GrowthMetricKey, string> = {
+  imp_cumulative:  'IMP',
+  like_cumulative: 'いいね',
+  rt_cumulative:   'RT',
 }
 
 interface Props {
@@ -22,14 +34,37 @@ interface Props {
   onClose: () => void
 }
 
-/* ---- コンテンツ部分（データあり） ---- */
+/* ---- 共通: ピル型タブバー ---- */
+
+function TabBar({ tab, setTab }: { tab: TabKey; setTab: (t: TabKey) => void }) {
+  return (
+    <div className="flex gap-1 px-5 pb-3">
+      {(['velocity', 'growth'] as const).map((t) => (
+        <button
+          key={t}
+          onClick={() => setTab(t)}
+          className="px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
+          style={{
+            backgroundColor: tab === t ? '#7C6FE0' : '#2A2A3C',
+            color:           tab === t ? '#FFFFFF'  : '#A0A0B0',
+            minHeight: '30px',
+          }}
+        >
+          {t === 'velocity' ? '初速' : '伸び全体'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/* ---- 初速タブ（post_velocity データあり時） ---- */
 
 function VelocityContent({
   data, metric, setMetric,
 }: {
   data: PostVelocityData
-  metric: MetricKey
-  setMetric: (m: MetricKey) => void
+  metric: VelocityMetricKey
+  setMetric: (m: VelocityMetricKey) => void
 }) {
   const { samples } = data
 
@@ -87,7 +122,7 @@ function VelocityContent({
         </div>
       </div>
 
-      {/* スロット間増分（0→15→30→… の Δimp 一覧） */}
+      {/* スロット間増分チップ */}
       {deltas.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">
           {deltas.map((d) => (
@@ -109,7 +144,7 @@ function VelocityContent({
 
       {/* 指標切替 */}
       <div className="flex gap-1 mb-3">
-        {(Object.keys(METRIC_LABELS) as MetricKey[]).map((k) => (
+        {(Object.keys(VELOCITY_METRIC_LABELS) as VelocityMetricKey[]).map((k) => (
           <button
             key={k}
             onClick={() => setMetric(k)}
@@ -120,7 +155,7 @@ function VelocityContent({
               minHeight: '28px',
             }}
           >
-            {METRIC_LABELS[k]}
+            {VELOCITY_METRIC_LABELS[k]}
           </button>
         ))}
       </div>
@@ -158,12 +193,137 @@ function VelocityContent({
   )
 }
 
+/* ---- 伸び全体タブ（post.hours を使用、新規取得不要） ---- */
+
+function GrowthContent({
+  hours, metric, setMetric,
+}: {
+  hours: HourlyMetric[]
+  metric: GrowthMetricKey
+  setMetric: (m: GrowthMetricKey) => void
+}) {
+  // post.hours は groupByPost で hour_offset 昇順ソート済み
+  if (hours.length <= 1) {
+    return (
+      <div
+        className="rounded-xl px-4 py-5 text-center"
+        style={{ backgroundColor: '#12121C' }}
+      >
+        <p className="text-sm" style={{ color: '#A0A0B0' }}>伸びデータがまだありません</p>
+        <p className="text-xs mt-1" style={{ color: '#606070' }}>
+          ポーリングが蓄積されると表示されます
+        </p>
+      </div>
+    )
+  }
+
+  const last = hours[hours.length - 1]
+  const prev = hours[hours.length - 2]
+  const recentDeltaImp  = last.imp_cumulative  - prev.imp_cumulative
+  const recentDeltaLike = last.like_cumulative - prev.like_cumulative
+  const recentDeltaRt   = last.rt_cumulative   - prev.rt_cumulative
+
+  return (
+    <>
+      {/* 伸びサマリー */}
+      <div className="rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: '#12121C' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#7C6FE0' }}>
+          現在の累積
+        </p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2">
+          <span>
+            <span style={{ color: '#A0A0B0' }}>IMP </span>
+            <span style={{ color: '#E0E0E8', fontWeight: 600 }}>
+              {last.imp_cumulative.toLocaleString()}
+            </span>
+          </span>
+          <span>
+            <span style={{ color: '#A0A0B0' }}>♥ </span>
+            <span style={{ color: '#E0E0E8' }}>{last.like_cumulative.toLocaleString()}</span>
+          </span>
+          <span>
+            <span style={{ color: '#A0A0B0' }}>RT </span>
+            <span style={{ color: '#E0E0E8' }}>{last.rt_cumulative.toLocaleString()}</span>
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <span>
+            <span style={{ color: '#A0A0B0' }}>経過 </span>
+            <span style={{ color: '#C0C0D0' }}>{last.hour_offset}h</span>
+          </span>
+          <span>
+            <span style={{ color: '#A0A0B0' }}>直近の伸び IMP </span>
+            <span style={{ color: '#C0C0D0' }}>+{recentDeltaImp.toLocaleString()}</span>
+          </span>
+          <span>
+            <span style={{ color: '#A0A0B0' }}>♥ </span>
+            <span style={{ color: '#C0C0D0' }}>+{recentDeltaLike}</span>
+          </span>
+          <span>
+            <span style={{ color: '#A0A0B0' }}>RT </span>
+            <span style={{ color: '#C0C0D0' }}>+{recentDeltaRt}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* 指標切替 */}
+      <div className="flex gap-1 mb-3">
+        {(Object.keys(GROWTH_METRIC_LABELS) as GrowthMetricKey[]).map((k) => (
+          <button
+            key={k}
+            onClick={() => setMetric(k)}
+            className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
+            style={{
+              backgroundColor: metric === k ? '#7C6FE0' : '#2A2A3C',
+              color:           metric === k ? '#FFFFFF'  : '#A0A0B0',
+              minHeight: '28px',
+            }}
+          >
+            {GROWTH_METRIC_LABELS[k]}
+          </button>
+        ))}
+      </div>
+
+      {/* 累積カーブ */}
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={hours} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <XAxis
+            dataKey="hour_offset"
+            tick={{ fontSize: 10, fill: '#A0A0B0' }}
+            tickFormatter={(v: number) => `${v}h`}
+          />
+          <YAxis tick={{ fontSize: 10, fill: '#A0A0B0' }} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: '#1A1A24',
+              border: '1px solid #2A2A3C',
+              borderRadius: 8,
+              color: '#FFFFFF',
+              fontSize: 12,
+            }}
+            labelFormatter={(v: number) => `${v}時間後`}
+          />
+          <Line
+            type="monotone"
+            dataKey={metric}
+            stroke="#7C6FE0"
+            strokeWidth={2}
+            dot={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </>
+  )
+}
+
 /* ---- モーダル本体 ---- */
 
 export default function VelocityModal({ post, onClose }: Props) {
-  const [data, setData]       = useState<PostVelocityData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [metric, setMetric]   = useState<MetricKey>('imp')
+  const [tab, setTab]                   = useState<TabKey>('velocity')
+  const [velocityData, setVelocityData] = useState<PostVelocityData | null>(null)
+  const [loading, setLoading]           = useState(true)
+  const [velocityMetric, setVelocityMetric] = useState<VelocityMetricKey>('imp')
+  const [growthMetric, setGrowthMetric]     = useState<GrowthMetricKey>('imp_cumulative')
 
   // Esc で閉じる
   useEffect(() => {
@@ -174,11 +334,11 @@ export default function VelocityModal({ post, onClose }: Props) {
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  // 初速データ取得
+  // 初速データ取得（タブに関わらず事前にフェッチ）
   useEffect(() => {
     setLoading(true)
     fetchPostVelocity(post.post_id)
-      .then(setData)
+      .then(setVelocityData)
       .finally(() => setLoading(false))
   }, [post.post_id])
 
@@ -191,19 +351,17 @@ export default function VelocityModal({ post, onClose }: Props) {
     : '—'
 
   return (
-    /* 背景オーバーレイ */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
       onClick={onClose}
     >
-      {/* モーダル本体 — クリックが透過しないよう stopPropagation */}
       <div
         className="w-full max-w-lg rounded-2xl overflow-hidden"
         style={{ backgroundColor: '#1A1A24', maxHeight: '90vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ヘッダ */}
+        {/* ヘッダ: 投稿情報 + 閉じるボタン */}
         <div className="flex items-start justify-between px-5 pt-5 pb-3">
           <div className="flex-1 min-w-0 mr-3">
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
@@ -224,46 +382,57 @@ export default function VelocityModal({ post, onClose }: Props) {
           <button
             onClick={onClose}
             className="flex items-center justify-center rounded-full shrink-0"
-            style={{
-              backgroundColor: '#2A2A3C',
-              color: '#A0A0B0',
-              width: 32, height: 32,
-            }}
+            style={{ backgroundColor: '#2A2A3C', color: '#A0A0B0', width: 32, height: 32 }}
             aria-label="閉じる"
           >
             <X size={16} />
           </button>
         </div>
 
+        {/* タブバー */}
+        <TabBar tab={tab} setTab={setTab} />
+
+        {/* コンテンツ */}
         <div className="px-5 pb-5">
-          {/* ローディング */}
-          {loading && (
-            <div className="flex items-center justify-center py-8">
-              <div
-                className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
-                style={{ borderColor: '#7C6FE0', borderTopColor: 'transparent' }}
-              />
-            </div>
+          {tab === 'velocity' && (
+            <>
+              {loading && (
+                <div className="flex items-center justify-center py-8">
+                  <div
+                    className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
+                    style={{ borderColor: '#7C6FE0', borderTopColor: 'transparent' }}
+                  />
+                </div>
+              )}
+              {!loading && velocityData === null && (
+                <div
+                  className="rounded-xl px-4 py-5 text-center"
+                  style={{ backgroundColor: '#12121C' }}
+                >
+                  <p className="text-sm" style={{ color: '#A0A0B0' }}>
+                    この投稿には初速データがありません
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: '#606070' }}>
+                    連携後の新規投稿から記録されます
+                  </p>
+                </div>
+              )}
+              {!loading && velocityData !== null && (
+                <VelocityContent
+                  data={velocityData}
+                  metric={velocityMetric}
+                  setMetric={setVelocityMetric}
+                />
+              )}
+            </>
           )}
 
-          {/* データなし */}
-          {!loading && data === null && (
-            <div
-              className="rounded-xl px-4 py-5 text-center"
-              style={{ backgroundColor: '#12121C' }}
-            >
-              <p className="text-sm" style={{ color: '#A0A0B0' }}>
-                この投稿には初速データがありません
-              </p>
-              <p className="text-xs mt-1" style={{ color: '#606070' }}>
-                連携後の新規投稿から記録されます
-              </p>
-            </div>
-          )}
-
-          {/* データあり */}
-          {!loading && data !== null && (
-            <VelocityContent data={data} metric={metric} setMetric={setMetric} />
+          {tab === 'growth' && (
+            <GrowthContent
+              hours={post.hours}
+              metric={growthMetric}
+              setMetric={setGrowthMetric}
+            />
           )}
         </div>
       </div>
