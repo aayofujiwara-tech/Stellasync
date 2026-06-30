@@ -80,6 +80,122 @@ async function fetchStats(uid: string): Promise<CastStats> {
   }
 }
 
+/* ---- モバイル用カード ---- */
+
+function MetricCell({ label, value, highlight }: {
+  label: string
+  value: string
+  highlight?: boolean
+}) {
+  return (
+    <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#12121C' }}>
+      <p className="text-xs mb-0.5" style={{ color: '#A0A0B0' }}>{label}</p>
+      <p className="text-sm font-semibold tabular-nums" style={{ color: highlight ? '#7C6FE0' : '#E0E0EE' }}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function MobileCastCard({ cast, rank }: { cast: CastRow; rank: number }) {
+  const er = pct(cast.stats.totalLikes + cast.stats.totalRt, cast.stats.totalImp)
+  return (
+    <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1A24' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs shrink-0" style={{ color: '#606070' }}>#{rank}</span>
+        <p
+          className="font-medium text-sm truncate min-w-0 flex-1"
+          style={{ color: '#E0E0EE' }}
+        >
+          {cast.display_name}
+        </p>
+        <Link
+          to={`/detail/cast/${cast.uid}/home`}
+          className="text-xs px-3 rounded shrink-0 flex items-center justify-center"
+          style={{ color: '#7C6FE0', backgroundColor: '#1E1E30', minHeight: '36px' }}
+        >
+          詳細
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <MetricCell label="7日IMP" value={fmtNum(cast.stats.totalImp)} highlight />
+        <MetricCell label="ER" value={er} />
+        <MetricCell
+          label="フォロワー"
+          value={cast.followers_count != null ? fmtNum(cast.followers_count) : '—'}
+        />
+        <MetricCell label="投稿数" value={String(cast.stats.totalPosts)} />
+      </div>
+    </div>
+  )
+}
+
+/* ---- PC用テーブル ---- */
+
+function PCCastTable({ casts }: { casts: CastRow[] }) {
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1A1A24' }}>
+      <div
+        className="grid gap-2 px-4 py-2 text-xs border-b"
+        style={{
+          gridTemplateColumns: 'minmax(0,1fr) 6rem 6rem 5rem 5rem 4rem',
+          color: '#A0A0B0',
+          borderColor: '#2A2A34',
+        }}
+      >
+        <span>キャスト</span>
+        <span className="text-right">フォロワー</span>
+        <span className="text-right">7日IMP</span>
+        <span className="text-right">ER</span>
+        <span className="text-right">投稿数</span>
+        <span />
+      </div>
+
+      {casts.map((cast, idx) => {
+        const er = pct(cast.stats.totalLikes + cast.stats.totalRt, cast.stats.totalImp)
+        return (
+          <div
+            key={cast.uid}
+            className="grid gap-2 px-4 py-3 items-center text-sm border-b last:border-0"
+            style={{
+              gridTemplateColumns: 'minmax(0,1fr) 6rem 6rem 5rem 5rem 4rem',
+              borderColor: '#2A2A34',
+            }}
+          >
+            <div className="min-w-0">
+              <p className="font-medium truncate" style={{ color: '#E0E0EE' }}>
+                {cast.display_name}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: '#A0A0B0' }}>#{idx + 1}</p>
+            </div>
+            <p className="text-right tabular-nums" style={{ color: '#C0C0D0' }}>
+              {cast.followers_count != null ? fmtNum(cast.followers_count) : '—'}
+            </p>
+            <p className="text-right font-medium tabular-nums" style={{ color: '#E0E0EE' }}>
+              {fmtNum(cast.stats.totalImp)}
+            </p>
+            <p className="text-right tabular-nums" style={{ color: '#A08FE0' }}>{er}</p>
+            <p className="text-right tabular-nums" style={{ color: '#C0C0D0' }}>
+              {cast.stats.totalPosts}
+            </p>
+            <div className="flex justify-end">
+              <Link
+                to={`/detail/cast/${cast.uid}/home`}
+                className="text-xs px-2 py-1 rounded"
+                style={{ color: '#7C6FE0', backgroundColor: '#1E1E30' }}
+              >
+                詳細
+              </Link>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ---- メインページ ---- */
+
 export default function OverviewPage() {
   const { role, managedStores } = useAuth()
   const [groups, setGroups] = useState<StoreGroup[]>([])
@@ -91,7 +207,6 @@ export default function OverviewPage() {
 
     async function load() {
       try {
-        // アカウント取得（admin: 全件 / manager: 担当店舗のみ）
         let accountsSnap
         if (role === 'admin') {
           try {
@@ -129,7 +244,6 @@ export default function OverviewPage() {
           })
           .filter((a) => a.display_name && a.store_id)
 
-        // 各キャストの daily_metrics を並列取得
         const rows: CastRow[] = await Promise.all(
           accounts.map(async (a) => ({
             ...a,
@@ -137,7 +251,6 @@ export default function OverviewPage() {
           })),
         )
 
-        // 店舗ごとにグルーピング
         const map = new Map<string, StoreGroup>()
         for (const row of rows) {
           if (!map.has(row.store_id)) {
@@ -150,7 +263,6 @@ export default function OverviewPage() {
           map.get(row.store_id)!.casts.push(row)
         }
 
-        // 各店舗のキャストを IMP 降順でソート
         const sorted = [...map.values()].sort((a, b) => a.storeId.localeCompare(b.storeId))
         for (const g of sorted) {
           g.casts.sort((a, b) => b.stats.totalImp - a.stats.totalImp)
@@ -199,11 +311,10 @@ export default function OverviewPage() {
   }
 
   return (
-    <div className="px-4 py-5 max-w-4xl mx-auto">
-      {/* ページヘッダ */}
+    <div className="px-4 py-5 max-w-5xl mx-auto">
       <div className="flex items-center gap-2 mb-6">
         <TrendingUp size={18} style={{ color: '#7C6FE0' }} />
-        <h2 className="text-base font-bold" style={{ color: '#E0E0EE' }}>
+        <h2 className="text-sm md:text-base font-bold" style={{ color: '#E0E0EE' }}>
           {headerLabel}
         </h2>
       </div>
@@ -216,20 +327,23 @@ export default function OverviewPage() {
         const groupImp = group.casts.reduce((s, c) => s + c.stats.totalImp, 0)
         return (
           <section key={group.storeId} className="mb-8">
-            {/* 店舗ヘッダ */}
+            {/* 店舗ヘッダ（共通） */}
             <div
               className="flex items-center justify-between px-4 py-3 rounded-xl mb-3"
               style={{ backgroundColor: '#1A1A2E' }}
             >
-              <div>
-                <p className="text-xs font-semibold tracking-wide" style={{ color: '#7C6FE0' }}>
+              <div className="min-w-0 mr-4">
+                <p
+                  className="text-xs font-semibold tracking-wide truncate"
+                  style={{ color: '#7C6FE0' }}
+                >
                   {group.storeName}
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: '#A0A0B0' }}>
                   {group.casts.length} キャスト
                 </p>
               </div>
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <p className="text-xs" style={{ color: '#A0A0B0' }}>7日IMP合計</p>
                 <p className="text-lg font-bold" style={{ color: '#E0E0EE' }}>
                   {fmtNum(groupImp)}
@@ -237,61 +351,16 @@ export default function OverviewPage() {
               </div>
             </div>
 
-            {/* キャスト一覧テーブル */}
-            <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1A1A24' }}>
-              {/* テーブルヘッダ */}
-              <div
-                className="grid grid-cols-[1fr_5rem_5rem_4rem_5rem_3rem] gap-2 px-4 py-2 text-xs border-b"
-                style={{ color: '#A0A0B0', borderColor: '#2A2A34' }}
-              >
-                <span>キャスト</span>
-                <span className="text-right">フォロワー</span>
-                <span className="text-right">7日IMP</span>
-                <span className="text-right">ER</span>
-                <span className="text-right">投稿数</span>
-                <span></span>
-              </div>
+            {/* モバイル: カードリスト */}
+            <div className="block md:hidden space-y-3">
+              {group.casts.map((cast, idx) => (
+                <MobileCastCard key={cast.uid} cast={cast} rank={idx + 1} />
+              ))}
+            </div>
 
-              {group.casts.map((cast, idx) => {
-                const er = pct(cast.stats.totalLikes + cast.stats.totalRt, cast.stats.totalImp)
-                return (
-                  <div
-                    key={cast.uid}
-                    className="grid grid-cols-[1fr_5rem_5rem_4rem_5rem_3rem] gap-2 px-4 py-3 items-center text-sm border-b last:border-0"
-                    style={{ borderColor: '#2A2A34' }}
-                  >
-                    <div>
-                      <p className="font-medium" style={{ color: '#E0E0EE' }}>
-                        {cast.display_name}
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: '#A0A0B0' }}>
-                        #{idx + 1}
-                      </p>
-                    </div>
-                    <p className="text-right tabular-nums" style={{ color: '#C0C0D0' }}>
-                      {cast.followers_count != null ? fmtNum(cast.followers_count) : '—'}
-                    </p>
-                    <p className="text-right font-medium tabular-nums" style={{ color: '#E0E0EE' }}>
-                      {fmtNum(cast.stats.totalImp)}
-                    </p>
-                    <p className="text-right tabular-nums" style={{ color: '#A08FE0' }}>
-                      {er}
-                    </p>
-                    <p className="text-right tabular-nums" style={{ color: '#C0C0D0' }}>
-                      {cast.stats.totalPosts}
-                    </p>
-                    <div className="flex justify-end">
-                      <Link
-                        to={`/detail/cast/${cast.uid}/home`}
-                        className="text-xs px-2 py-1 rounded"
-                        style={{ color: '#7C6FE0', backgroundColor: '#1E1E30' }}
-                      >
-                        詳細
-                      </Link>
-                    </div>
-                  </div>
-                )
-              })}
+            {/* PC: テーブル */}
+            <div className="hidden md:block">
+              <PCCastTable casts={group.casts} />
             </div>
           </section>
         )
