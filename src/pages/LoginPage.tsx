@@ -56,7 +56,7 @@ export default function LoginPage() {
         <div className="w-full rounded-xl px-4 py-3 text-left" style={{ backgroundColor: '#1A1A24' }}>
           <p className="text-xs font-semibold mb-1" style={{ color: '#D4A017' }}>⚠️ 連携前にご確認ください</p>
           <p className="text-xs" style={{ color: '#A0A0B0' }}>
-            お店用のXアカウントでログイン中か確認してください。複数アカウントをお持ちの方は、Xアプリでお店用アカウントに切り替えてからボタンをタップしてください。
+            このブラウザ（Chrome等）で x.com にお店用アカウントでログインしているか確認してください。Xアプリでの切替ではなく、ブラウザでのログイン状態が連携に使われます。
           </p>
         </div>
 

@@ -199,21 +199,40 @@ export default function AuthCallback() {
 
   // reauth
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={BG}>
-      <div className="w-full max-w-[375px] flex flex-col items-center gap-5 text-center">
-        <p className="text-sm font-medium" style={{ color: '#E0E0EE' }}>
-          アカウントを切り替えてから再連携してください
+    <div className="min-h-screen flex items-center justify-center px-4 py-8" style={BG}>
+      <div className="w-full max-w-[375px] flex flex-col items-center gap-5">
+        <p className="text-sm font-medium text-center" style={{ color: '#E0E0EE' }}>
+          ブラウザのXログインをお店用アカウントに切り替えてください
         </p>
 
-        <div className="w-full rounded-2xl px-5 py-4 text-left" style={{ backgroundColor: '#1A1A24' }}>
-          <p className="text-xs font-semibold mb-2" style={{ color: '#D4A017' }}>
-            切替手順
+        <div className="w-full rounded-2xl px-5 py-4 text-left space-y-4" style={{ backgroundColor: '#1A1A24' }}>
+          <div>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: '#D4A017' }}>
+              方法1｜ブラウザでログインを切り替える
+            </p>
+            <ol className="text-xs space-y-1.5 list-decimal list-inside" style={{ color: '#C0C0D0' }}>
+              <li>このブラウザ（Chrome等）で x.com を開く</li>
+              <li>ログイン中のアカウントを確認し、お店用アカウントに切り替える<br />
+                <span style={{ color: '#909090' }}>（またはログアウト → お店用アカウントでログイン）</span>
+              </li>
+              <li>この画面に戻って「もう一度連携する」をタップ</li>
+            </ol>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: '#D4A017' }}>
+              方法2｜シークレットモードで連携（確実）
+            </p>
+            <ol className="text-xs space-y-1.5 list-decimal list-inside" style={{ color: '#C0C0D0' }}>
+              <li>ブラウザで新しいシークレット／プライベートタブを開く</li>
+              <li>そこで Stellasync を開く</li>
+              <li>Xのログイン画面が表示されるので、お店用アカウントでログインして連携</li>
+            </ol>
+          </div>
+
+          <p className="text-xs leading-relaxed" style={{ color: '#808090' }}>
+            ※ Xアプリでアカウントを切り替えても連携には反映されません。必ずブラウザでのログイン状態をお店用アカウントにしてください。
           </p>
-          <ol className="text-xs space-y-1.5 list-decimal list-inside" style={{ color: '#C0C0D0' }}>
-            <li>XアプリまたはX.comを開く</li>
-            <li>右上のアイコンからお店用アカウントに切り替える</li>
-            <li>切り替えたら下のボタンをタップ</li>
-          </ol>
         </div>
 
         <button
@@ -229,7 +248,7 @@ export default function AuthCallback() {
               <svg viewBox="0 0 24 24" className="w-5 h-5 fill-black">
                 <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
               </svg>
-              お店用アカウントで再度連携する
+              もう一度連携する
             </>
           )}
         </button>
