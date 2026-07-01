@@ -3,7 +3,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
-import { refreshXToken } from './oauth'
+import { refreshXToken, RefreshError } from './oauth'
 import { X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
 import { notifyTokenRevoked } from './notifications'
 import type { Account, AccountTokens } from './types'
@@ -56,7 +56,14 @@ async function checkAccountToken(
     console.log(`[tokenWatcher] token refreshed on 401 for account ${accountId}`)
     return
   } catch (e) {
-    console.warn(`[tokenWatcher] refresh failed for ${accountId}, revoking:`, e)
+    // 一時障害（5xx / HTML / ネットワーク等）→ revoked にせず次回リトライに委ねる
+    const isPermanent = e instanceof RefreshError && e.kind === 'permanent'
+    if (!isPermanent) {
+      const label = e instanceof RefreshError ? 'transient' : 'unexpected error'
+      console.warn(`[tokenWatcher] ${label} on refresh for ${accountId}, will retry next cycle:`, e)
+      return
+    }
+    console.warn(`[tokenWatcher] permanent refresh failure for ${accountId}, revoking:`, e)
   }
 
   // refresh も失敗 → 失効確定 → status 更新 → 通知送信（送信済みなら重複送信を防ぐ）

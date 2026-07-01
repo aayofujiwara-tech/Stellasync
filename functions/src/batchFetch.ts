@@ -2,7 +2,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
-import { refreshXToken } from './oauth'
+import { refreshXToken, RefreshError } from './oauth'
 import type { Account, AccountTokens, PostHourlyMetrics } from './types'
 
 if (getApps().length === 0) {
@@ -165,7 +165,14 @@ export async function fetchAndStoreMetrics(
       accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
       tweetRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
       console.log(`[batchFetch] token refreshed on 401, retry status: ${tweetRes.status} for ${accountId}`)
-    } catch {
+    } catch (e) {
+      // 一時障害（5xx / HTML / ネットワーク等）→ revoked にせず次回リトライに委ねる
+      const isPermanent = e instanceof RefreshError && e.kind === 'permanent'
+      if (!isPermanent) {
+        const label = e instanceof RefreshError ? 'transient' : 'unexpected error'
+        console.warn(`[batchFetch] ${label} on refresh for ${accountId}, will retry next cycle:`, e)
+        return
+      }
       await handleTokenError(accountId, 401)
       return
     }

@@ -246,12 +246,28 @@ export const authXCallback = onRequest(
 )
 
 /**
+ * refreshXToken が throw するエラー。
+ * kind = 'permanent': invalid_grant / 401 → 連携解除（revoke 確定）
+ * kind = 'transient': 5xx / HTML / ネットワーク障害 → 一時的失敗（次回リトライ）
+ */
+export class RefreshError extends Error {
+  constructor(
+    public readonly kind: 'permanent' | 'transient',
+    message: string
+  ) {
+    super(message)
+    this.name = 'RefreshError'
+  }
+}
+
+/**
  * X アクセストークンをリフレッシュしてアカウント情報を更新する。
  * batchFetch.ts / tokenWatcher.ts 等の Cloud Functions から呼び出される。
  *
  * @param uid           Firebase Auth UID
  * @param encryptionKey AES-256-GCM キー（hex 64文字）
  * @returns 新しいアクセストークン（平文）
+ * @throws RefreshError  permanent = 連携解除確定 / transient = 一時障害（revoke 不要）
  */
 export async function refreshXToken(uid: string, encryptionKey: string): Promise<string> {
   const db = getFirestore()
@@ -284,7 +300,17 @@ export async function refreshXToken(uid: string, encryptionKey: string): Promise
 
   if (!tokenRes.ok) {
     const detail = await tokenRes.text()
-    throw new Error(`Failed to refresh X token: ${detail}`)
+    // HTML が返ってきた場合（X の 503 ダウンページ等）は一時障害として扱う
+    const isHtml = detail.trimStart().startsWith('<')
+    // 恒久的失敗: HTTP 401、または HTTP 400 かつ invalid_grant を含む JSON
+    const isPermanent =
+      !isHtml &&
+      (tokenRes.status === 401 ||
+        (tokenRes.status === 400 && detail.includes('invalid_grant')))
+    throw new RefreshError(
+      isPermanent ? 'permanent' : 'transient',
+      `Failed to refresh X token (HTTP ${tokenRes.status}): ${detail.slice(0, 300)}`
+    )
   }
 
   const tokenData = (await tokenRes.json()) as TokenResponse
