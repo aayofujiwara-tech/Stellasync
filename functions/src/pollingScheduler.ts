@@ -42,8 +42,11 @@ export function getPollingPhase(
   const nowMinutes = getMinutesInTimezone(now, store.business_hours.timezone)
   const openMinutes = timeToMinutes(store.business_hours.open)
   const closeMinutes = timeToMinutes(store.business_hours.close)
-  const highStart = openMinutes + store.polling_config.high_freq_start_offset
-  const highEnd = closeMinutes + store.polling_config.high_freq_end_offset
+  // M-2: offset 適用後を 0-1439 にクランプ。
+  // 負の highStart は isInWindow で「now >= 負値」→ 常に true になり全時刻 high 化するバグを防ぐ。
+  // 1440 超の highEnd も同様。深夜またぎ（highEnd < highStart）はクランプ後も維持される。
+  const highStart = Math.max(0, openMinutes + store.polling_config.high_freq_start_offset)
+  const highEnd   = Math.min(1439, closeMinutes + store.polling_config.high_freq_end_offset)
 
   // daily: 毎朝05:00 ±14分
   if (Math.abs(nowMinutes - 300) <= 14) return 'daily'
@@ -51,8 +54,11 @@ export function getPollingPhase(
   // high: 高頻度ウィンドウ内（深夜またぎ対応）
   if (isInWindow(nowMinutes, highStart, highEnd)) return 'high'
 
-  // low: low_freq_interval の倍数分に一致（±1分）
-  if (nowMinutes % store.polling_config.low_freq_interval <= 1) return 'low'
+  // M-3: 15分スロット単位で判定し ±1分余裕による二重発火を排除。
+  // low_freq_interval が 15 の倍数でない場合は Math.round で最近接スロット数に丸める。
+  // low_freq_interval=0 は slotsPerInterval=0 になり条件不成立で安全にスキップ。
+  const slotsPerInterval = Math.round(store.polling_config.low_freq_interval / 15)
+  if (slotsPerInterval > 0 && Math.floor(nowMinutes / 15) % slotsPerInterval === 0) return 'low'
 
   return 'skip'
 }
