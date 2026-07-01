@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import AuthCallback from './pages/AuthCallback'
@@ -16,10 +16,12 @@ import RankingOverviewPage from './pages/admin/RankingOverviewPage'
 
 function RootRedirect() {
   const { user, loading, role } = useAuth()
+  const location = useLocation()
 
   // Cloudflare / DNS レイヤーで /auth/x/callback のパスが / に変わることがあるため、
-  // root に code+state が付いていれば AuthCallback に引き継ぐ
-  const params = new URLSearchParams(window.location.search)
+  // root に code と state の両方が付いている時だけ AuthCallback に引き継ぐ。
+  // state のみ（code 消費済み）の場合は通常の認証済みフローとして扱う。
+  const params = new URLSearchParams(location.search)
   const code  = params.get('code')
   const state = params.get('state')
   if (code && state) {

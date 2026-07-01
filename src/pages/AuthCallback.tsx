@@ -175,7 +175,7 @@ export default function AuthCallback() {
           </p>
 
           <button
-            onClick={() => navigate('/', { replace: true })}
+            onClick={() => navigate({ pathname: '/', search: '' }, { replace: true })}
             className="w-full py-3 rounded-xl font-semibold"
             style={{ backgroundColor: '#7C6FE0', color: '#FFFFFF', minHeight: '44px' }}
           >
