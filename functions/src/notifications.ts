@@ -36,6 +36,7 @@ export async function notifyTokenRevoked({
 
   const notifBatch = db.batch()
   const fcmTokens: string[] = []
+  let notifiedCount = 0
 
   for (const managerDoc of managersSnap.docs) {
     const member = managerDoc.data() as MemberDoc
@@ -43,6 +44,7 @@ export async function notifyTokenRevoked({
     // 店長は自分の担当店舗のみ。エリアMGRは全店舗。
     if (member.role === 'manager' && !(member.store_ids ?? []).includes(storeId)) continue
 
+    notifiedCount++
     const notifRef = db.collection('notifications').doc()
     notifBatch.set(notifRef, {
       org_id: orgId,
@@ -61,6 +63,10 @@ export async function notifyTokenRevoked({
   }
 
   await notifBatch.commit()
+
+  if (notifiedCount === 0) {
+    console.warn(`[notifyTokenRevoked] no members to notify for org=${orgId}`)
+  }
 
   if (fcmTokens.length === 0) return
 

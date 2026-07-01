@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 interface AccountData {
   display_name: string
   x_user_id: string
+  username?: string
   token_status: 'valid' | 'expired' | 'revoked'
 }
 
@@ -82,7 +83,7 @@ export default function SettingsPage() {
         <div>
           <p className="text-xs mb-1" style={{ color: '#A0A0B0' }}>X ID</p>
           <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>
-            {account?.x_user_id ? `@${account.x_user_id}` : '—'}
+            {account?.x_user_id ? `@${account.username ?? account.x_user_id}` : '—'}
           </p>
         </div>
       </div>

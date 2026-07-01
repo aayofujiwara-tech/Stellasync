@@ -41,9 +41,14 @@ function todayJstStr(): string {
  * 10:30 実行前提: JST 時刻 >= BUSINESS_DAY_START_HOUR なら前日、未満なら前々日。
  */
 function lastBusinessDayStr(): string {
-  const jstHour = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours()
+  const now = new Date()
+  const jstHour = Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false })
+      .formatToParts(now)
+      .find((p) => p.type === 'hour')?.value ?? '0'
+  )
   const daysBack = jstHour >= BUSINESS_DAY_START_HOUR ? 1 : 2
-  return new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+  return new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000)
     .toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' })
     .slice(0, 10)
 }

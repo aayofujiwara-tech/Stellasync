@@ -79,7 +79,9 @@ function firstMediaThumb(tweet: XTweet, includes: XTweetsResponse['includes']): 
  * ASCII #・全角 ＃ の両方に対応。日本語ハッシュタグも取得する。
  */
 export function extractHashtags(text: string): string[] {
-  const matches = text.match(/[#＃][\w　-鿿]+/g)
+  // ASCII英数字・アンダースコア・ひらがな・カタカナ・CJK漢字に限定。
+  // 旧: [\w　-鿿] は全角スペース(U+3000)〜CJK末尾の広範囲で非ハッシュタグ文字が混入しうる。
+  const matches = text.match(/[#＃][A-Za-z0-9_ぁ-ヿ一-鿿]+/g)
   return matches ? matches.map((tag) => tag.slice(1).toLowerCase()) : []
 }
 

@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { fetchAndStoreMetrics, X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
 import { refreshXToken, RefreshError } from './oauth'
 import type { Account } from './types'
@@ -36,11 +36,24 @@ export const manualFetch = onCall(
       }
     }
 
-    // サーバ側クールダウン（last_fetched_at は scheduled/manual 共通で更新される）
-    const last = account.last_fetched_at?.toDate()?.getTime() ?? 0
-    const wait = COOLDOWN_MS - (Date.now() - last)
-    if (wait > 0) {
-      return { ok: false as const, reason: 'cooldown' as const, retryAfterSec: Math.ceil(wait / 1000) }
+    // サーバ側クールダウン: トランザクションで last_fetched_at を atomic に確認・更新。
+    // 並行リクエストが同じ古い last_fetched_at を読んでクールダウンをバイパスするレースを防ぐ。
+    const now = Date.now()
+    let cooldownRetryAfterSec = 0
+    const cooldownPassed = await db.runTransaction(async (tx) => {
+      const freshSnap = await tx.get(ref)
+      if (!freshSnap.exists) return false
+      const last = (freshSnap.data() as Account).last_fetched_at?.toDate()?.getTime() ?? 0
+      const wait = COOLDOWN_MS - (now - last)
+      if (wait > 0) {
+        cooldownRetryAfterSec = Math.ceil(wait / 1000)
+        return false
+      }
+      tx.update(ref, { last_fetched_at: FieldValue.serverTimestamp() })
+      return true
+    })
+    if (!cooldownPassed) {
+      return { ok: false as const, reason: 'cooldown' as const, retryAfterSec: cooldownRetryAfterSec }
     }
 
     // 窓判定を無視して即収集。phase='high'（直近投稿の現スナップショット）。
