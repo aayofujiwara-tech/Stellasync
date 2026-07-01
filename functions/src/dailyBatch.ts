@@ -4,6 +4,7 @@ import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { decrypt } from './crypto'
 import { fetchAndStoreMetrics, X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
+import { refreshXToken, RefreshError } from './oauth'
 import type { Account, AccountTokens, PostHourlyMetrics } from './types'
 
 if (getApps().length === 0) {
@@ -61,20 +62,49 @@ async function fetchFollowerMetrics(
     console.warn(`[dailyBatch] skipping ${accountId}: no tokens stored`)
     return
   }
-  const accessToken = decrypt((tokenDoc.data() as AccountTokens).access_token, ENCRYPTION_KEY.value())
+  let accessToken = decrypt((tokenDoc.data() as AccountTokens).access_token, ENCRYPTION_KEY.value())
+
+  // 事前リフレッシュ: 期限まで 10 分以内または既に期限切れ（batchFetch と同じロジック）
+  const expiresAt = accountData.token_expires_at?.toDate()
+  const refreshThreshold = new Date(Date.now() + 10 * 60 * 1000)
+  if (!expiresAt || expiresAt <= refreshThreshold) {
+    try {
+      accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
+      console.log(`[dailyBatch] proactive token refresh succeeded for ${accountId}`)
+    } catch (e) {
+      console.warn(`[dailyBatch] proactive refresh failed for ${accountId}, using existing token:`, e)
+    }
+  }
+
   const url = `${X_USERS_URL}/${accountData.x_user_id}?user.fields=public_metrics`
 
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
-  if (!res.ok) {
-    if (res.status === 401) {
-      await getFirestore().collection('accounts').doc(accountId).update({
+  // 401: リフレッシュ後 1 回リトライ。それでも失敗したら kind で分岐（batchFetch と同じ）
+  if (!res.ok && res.status === 401) {
+    try {
+      accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
+      res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      console.log(`[dailyBatch] token refreshed on 401, retry status: ${res.status} for ${accountId}`)
+    } catch (e) {
+      const isPermanent = e instanceof RefreshError && e.kind === 'permanent'
+      if (!isPermanent) {
+        const label = e instanceof RefreshError ? 'transient' : 'unexpected error'
+        console.warn(`[dailyBatch] ${label} on refresh for ${accountId}, will retry next cycle:`, e)
+        return
+      }
+      await db.collection('accounts').doc(accountId).update({
         token_status: 'revoked',
         token_checked_at: FieldValue.serverTimestamp(),
       })
+      console.warn(`[dailyBatch] permanent refresh failure for ${accountId}, revoked`)
+      return
     }
+  }
+
+  if (!res.ok) {
     console.error(`[dailyBatch] X API ${res.status} for account ${accountId}`)
     return
   }
