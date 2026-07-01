@@ -170,21 +170,33 @@ export default function PostsPage() {
   const { targetCastId } = useTargetCastId()
   const [posts, setPosts] = useState<PostGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | PostType>('all')
 
   useEffect(() => {
     if (!targetCastId) return
-    getDocs(
-      query(
-        collection(db, 'post_hourly_metrics'),
-        where('cast_id', '==', targetCastId),
-      ),
-    )
-      .then((snap) => {
-        const metrics = snap.docs.map((d) => d.data() as HourlyMetric)
-        setPosts(groupByPost(metrics))
-      })
-      .finally(() => setLoading(false))
+    let cancelled = false
+    const load = async () => {
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, 'post_hourly_metrics'),
+            where('cast_id', '==', targetCastId),
+          ),
+        )
+        if (!cancelled) {
+          const metrics = snap.docs.map((d) => d.data() as HourlyMetric)
+          setPosts(groupByPost(metrics))
+        }
+      } catch (e) {
+        console.error('[PostsPage] loadData failed:', e)
+        if (!cancelled) setLoadError('データの取得に失敗しました。時間をおいて再度お試しください')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [targetCastId])
 
   if (loading) {
@@ -193,6 +205,14 @@ export default function PostsPage() {
         {[1, 2, 3].map((i) => (
           <div key={i} className="rounded-xl h-20 animate-pulse" style={{ backgroundColor: '#1A1A24' }} />
         ))}
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <p className="text-sm text-center" style={{ color: '#D85A30' }}>{loadError}</p>
       </div>
     )
   }

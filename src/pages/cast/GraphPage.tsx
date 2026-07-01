@@ -57,6 +57,7 @@ export default function GraphPage() {
   )
   const [data, setData]     = useState<DailyMetric[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const setScopePersist = (s: Scope) => {
     setScope(s)
@@ -65,20 +66,30 @@ export default function GraphPage() {
 
   useEffect(() => {
     if (!targetCastId) return
+    let cancelled = false
     setLoading(true)
+    setLoadError(null)
     const days = period === 'week' ? 7 : 30
-    getDocs(
-      query(
-        collection(db, 'daily_metrics'),
-        where('cast_id', '==', targetCastId),
-        orderBy('date', 'desc'),
-        limit(days),
-      ),
-    )
-      .then((snap) =>
-        setData(snap.docs.map((d) => d.data() as DailyMetric).reverse()),
-      )
-      .finally(() => setLoading(false))
+    const load = async () => {
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, 'daily_metrics'),
+            where('cast_id', '==', targetCastId),
+            orderBy('date', 'desc'),
+            limit(days),
+          ),
+        )
+        if (!cancelled) setData(snap.docs.map((d) => d.data() as DailyMetric).reverse())
+      } catch (e) {
+        console.error('[GraphPage] loadData failed:', e)
+        if (!cancelled) setLoadError('データの取得に失敗しました。時間をおいて再度お試しください')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [targetCastId, period])
 
   const isFollowers = metric === 'followers'
@@ -162,6 +173,13 @@ export default function GraphPage() {
 
       {loading ? (
         <div className="rounded-xl h-48 animate-pulse" style={{ backgroundColor: '#1A1A24' }} />
+      ) : loadError ? (
+        <div
+          className="flex items-center justify-center h-48 rounded-xl"
+          style={{ backgroundColor: '#1A1A24' }}
+        >
+          <p className="text-sm" style={{ color: '#D85A30' }}>{loadError}</p>
+        </div>
       ) : chartData.length === 0 ? (
         <div
           className="flex items-center justify-center h-48 rounded-xl"

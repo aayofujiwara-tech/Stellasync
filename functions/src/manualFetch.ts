@@ -3,7 +3,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { fetchAndStoreMetrics, X_CLIENT_ID, X_CLIENT_SECRET } from './batchFetch'
-import { refreshXToken } from './oauth'
+import { refreshXToken, RefreshError } from './oauth'
 import type { Account } from './types'
 
 if (getApps().length === 0) initializeApp()
@@ -28,7 +28,10 @@ export const manualFetch = onCall(
       // 即拒否せず、まず1回リフレッシュを試す（成功すれば refreshXToken が status を valid に戻す）
       try {
         await refreshXToken(uid, ENCRYPTION_KEY.value())
-      } catch {
+      } catch (e) {
+        if (e instanceof RefreshError && e.kind === 'transient') {
+          throw new HttpsError('internal', 'X側の一時的な問題です。しばらくしてから再度お試しください')
+        }
         throw new HttpsError('failed-precondition', 'トークンが無効です。再連携してください')
       }
     }

@@ -35,6 +35,7 @@ async function checkAccountToken(
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15000),
   })
 
   if (res.ok) {

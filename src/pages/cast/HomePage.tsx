@@ -51,6 +51,7 @@ export default function HomePage() {
   const [cd, setCd]                     = useState(0)
   const [fetchError, setFetchError]     = useState<string | null>(null)
   const [fetchOk, setFetchOk]           = useState(false)
+  const [loadError, setLoadError]       = useState<string | null>(null)
   const [scope, setScope]               = useState<Scope>(
     (localStorage.getItem(SCOPE_KEY) as Scope) || 'all'
   )
@@ -62,6 +63,7 @@ export default function HomePage() {
 
   const loadData = useCallback(async () => {
     if (!targetCastId) return
+    setLoadError(null)
     try {
       const [accountSnap, metricsSnap] = await Promise.all([
         getDoc(doc(db, 'accounts', targetCastId)),
@@ -79,6 +81,9 @@ export default function HomePage() {
         setAccount(accountSnap.data() as AccountData)
       }
       setMetrics(metricsSnap.docs.map((d) => d.data() as DailyMetric))
+    } catch (e) {
+      console.error('[HomePage] loadData failed:', e)
+      setLoadError('データの取得に失敗しました。時間をおいて再度お試しください')
     } finally {
       setLoading(false)
     }
@@ -218,9 +223,13 @@ export default function HomePage() {
 
       {!hasData ? (
         <div className="rounded-xl p-6 text-center" style={{ backgroundColor: '#1A1A24' }}>
-          <p className="text-sm" style={{ color: '#A0A0B0' }}>
-            データを取得中です。しばらくお待ちください
-          </p>
+          {loadError ? (
+            <p className="text-sm" style={{ color: '#D85A30' }}>{loadError}</p>
+          ) : (
+            <p className="text-sm" style={{ color: '#A0A0B0' }}>
+              データを取得中です。しばらくお待ちください
+            </p>
+          )}
         </div>
       ) : (
         <>

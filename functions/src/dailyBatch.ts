@@ -80,13 +80,14 @@ async function fetchFollowerMetrics(
 
   let res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15000),
   })
 
   // 401: リフレッシュ後 1 回リトライ。それでも失敗したら kind で分岐（batchFetch と同じ）
   if (!res.ok && res.status === 401) {
     try {
       accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
-      res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(15000) })
       console.log(`[dailyBatch] token refreshed on 401, retry status: ${res.status} for ${accountId}`)
     } catch (e) {
       const isPermanent = e instanceof RefreshError && e.kind === 'permanent'

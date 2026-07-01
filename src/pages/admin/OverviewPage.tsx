@@ -13,7 +13,6 @@ interface AccountDoc {
   display_name: string
   store_id: string
   store_name?: string
-  followers_count?: number
 }
 
 interface DailyMetricDoc {
@@ -21,6 +20,7 @@ interface DailyMetricDoc {
   likes?: number
   retweets?: number
   posts_count?: number
+  followers?: number
   date: Timestamp
 }
 
@@ -29,6 +29,7 @@ interface CastStats {
   totalLikes: number
   totalRt: number
   totalPosts: number
+  followers?: number
 }
 
 interface CastRow extends AccountDoc {
@@ -73,7 +74,10 @@ async function fetchStats(uid: string): Promise<CastStats> {
       totalRt    += data.retweets     ?? 0
       totalPosts += data.posts_count  ?? 0
     }
-    return { totalImp, totalLikes, totalRt, totalPosts }
+    const followers = snap.docs.length > 0
+      ? (snap.docs[0].data() as DailyMetricDoc).followers
+      : undefined
+    return { totalImp, totalLikes, totalRt, totalPosts, followers }
   } catch (e) {
     console.error('[OverviewPage] daily_metrics getDoc FAILED (cast_id=' + uid + '):', e)
     return { totalImp: 0, totalLikes: 0, totalRt: 0, totalPosts: 0 }
@@ -122,7 +126,7 @@ function MobileCastCard({ cast, rank }: { cast: CastRow; rank: number }) {
         <MetricCell label="ER" value={er} />
         <MetricCell
           label="フォロワー"
-          value={cast.followers_count != null ? fmtNum(cast.followers_count) : '—'}
+          value={cast.stats.followers != null ? fmtNum(cast.stats.followers) : '—'}
         />
         <MetricCell label="投稿数" value={String(cast.stats.totalPosts)} />
       </div>
@@ -169,7 +173,7 @@ function PCCastTable({ casts }: { casts: CastRow[] }) {
               <p className="text-xs mt-0.5" style={{ color: '#A0A0B0' }}>#{idx + 1}</p>
             </div>
             <p className="text-right tabular-nums" style={{ color: '#C0C0D0' }}>
-              {cast.followers_count != null ? fmtNum(cast.followers_count) : '—'}
+              {cast.stats.followers != null ? fmtNum(cast.stats.followers) : '—'}
             </p>
             <p className="text-right font-medium tabular-nums" style={{ color: '#E0E0EE' }}>
               {fmtNum(cast.stats.totalImp)}
@@ -239,7 +243,6 @@ export default function OverviewPage() {
               display_name:   data.display_name as string,
               store_id:       (data.store_id as string) ?? '',
               store_name:     data.store_name as string | undefined,
-              followers_count: data.followers_count as number | undefined,
             }
           })
           .filter((a) => a.display_name && a.store_id)

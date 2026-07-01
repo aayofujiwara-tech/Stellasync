@@ -157,13 +157,14 @@ export async function fetchAndStoreMetrics(
 
   let tweetRes = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15000),
   })
 
   // 401: リフレッシュ後 1 回リトライ。それでも失敗したら revoke
   if (!tweetRes.ok && tweetRes.status === 401) {
     try {
       accessToken = await refreshXToken(accountId, ENCRYPTION_KEY.value())
-      tweetRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      tweetRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(15000) })
       console.log(`[batchFetch] token refreshed on 401, retry status: ${tweetRes.status} for ${accountId}`)
     } catch (e) {
       // 一時障害（5xx / HTML / ネットワーク等）→ revoked にせず次回リトライに委ねる

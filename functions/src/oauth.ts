@@ -173,6 +173,7 @@ export const authXCallback = onRequest(
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: tokenParams.toString(),
+      signal: AbortSignal.timeout(15000),
     })
 
     if (!tokenRes.ok) {
@@ -187,6 +188,7 @@ export const authXCallback = onRequest(
     // X ユーザー情報を取得
     const userRes = await fetch(`${X_USER_ME_URL}?user.fields=name,username`, {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      signal: AbortSignal.timeout(15000),
     })
 
     if (!userRes.ok) {
@@ -289,14 +291,20 @@ export async function refreshXToken(uid: string, encryptionKey: string): Promise
     refresh_token: refreshToken,
   })
 
-  const tokenRes = await fetch(X_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: tokenParams.toString(),
-  })
+  let tokenRes: Response
+  try {
+    tokenRes = await fetch(X_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: tokenParams.toString(),
+      signal: AbortSignal.timeout(15000),
+    })
+  } catch (e) {
+    throw new RefreshError('transient', `Network/timeout error refreshing X token for ${uid}: ${String(e)}`)
+  }
 
   if (!tokenRes.ok) {
     const detail = await tokenRes.text()
