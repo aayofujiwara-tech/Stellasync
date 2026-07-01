@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
+import { onAuthStateChanged, type User } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
 
@@ -31,16 +31,12 @@ export function useAuth(): AuthState {
       let accountValid = false
       try {
         const accountSnap = await getDoc(doc(db, 'accounts', user.uid))
-        if (!accountSnap.exists()) {
-          console.warn('[useAuth] accounts getDoc: doc not found (uid=' + user.uid + ')')
-          await signOut(auth)
-          setState({ user: null, loading: false, role: 'cast', managedStores: [] })
-          return
-        }
-        if (!accountSnap.data().x_user_id) {
-          console.warn('[useAuth] accounts getDoc: x_user_id missing (uid=' + user.uid + ')')
-          await signOut(auth)
-          setState({ user: null, loading: false, role: 'cast', managedStores: [] })
+        if (!accountSnap.exists() || !accountSnap.data().x_user_id) {
+          // signOut しない。新規連携直後は Cloud Function の Firestore 書き込みが
+          // onAuthStateChanged より後に伝播することがあり、正常フローを誤ってログアウト
+          // させてしまうため。user を維持して role='cast' にフォールバックする。
+          console.warn('[useAuth] accounts doc missing or x_user_id empty — keeping user, fallback cast (uid=' + user.uid + ')')
+          setState({ user, loading: false, role: 'cast', managedStores: [] })
           return
         }
         accountValid = true
